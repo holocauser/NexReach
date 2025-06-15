@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput, Platform } from 'react-native';
-import { Camera, CameraType, useCameraPermissions } from 'expo-camera';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput, Platform, Button } from 'react-native';
+import { Camera, CameraType, useCameraPermissions, CameraView } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { Camera as CameraIcon, X, RotateCcw, CircleCheck as CheckCircle, CircleAlert as AlertCircle, CreditCard as Edit3, Zap } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
-import { useCardStore } from '@/store/cardStore';
+import { useCardStore } from '@/store/cardStore'; // Make sure this is the persistent store with AsyncStorage
+import Modal from 'react-native-modal';
 
 const GOOGLE_VISION_API_KEY = 'AIzaSyDsjOqNqBY6albDBbUb_nTalGvwqeeRQ_A';
 
@@ -20,6 +21,8 @@ export default function ScanScreen() {
   const cameraRef = useRef<any>(null);
   const router = useRouter();
   const { addCard } = useCardStore();
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   // Use expo-camera permissions directly - no custom screens
   const [permission, requestPermission] = useCameraPermissions();
@@ -41,13 +44,13 @@ export default function ScanScreen() {
     
     console.log('📝 Lines found:', lines);
 
-    const data = {
+    const data: any = {
       name: '',
       company: '',
       title: '',
-      phone: '',
+      phones: [] as string[],
       email: '',
-      address: '',
+      addresses: [] as string[],
       website: '',
     };
 
@@ -71,11 +74,15 @@ export default function ScanScreen() {
         console.log('✉️ Found email:', data.email);
       }
       
-      // Phone detection
-      const phoneMatch = line.match(phoneRegex);
-      if (phoneMatch && !data.phone) {
-        data.phone = line;
-        console.log('📞 Found phone:', data.phone);
+      // Phone detection (collect up to 3 unique phone numbers)
+      const phoneMatches = line.match(phoneRegex);
+      if (phoneMatches) {
+        phoneMatches.forEach((match: string) => {
+          if ((data.phones || []).length < 3 && !(data.phones || []).includes(match)) {
+            data.phones.push(match);
+            console.log('📞 Found phone:', match);
+          }
+        });
       }
       
       // Website detection
@@ -97,21 +104,24 @@ export default function ScanScreen() {
         console.log('💼 Found title:', data.title);
       }
       
-      // Address detection (contains numbers and address keywords)
-      if (!data.address && /\d+.*\b(st|street|ave|avenue|rd|road|blvd|boulevard|suite|ste|floor|fl)\b/i.test(line)) {
-        data.address = line;
-        console.log('🏠 Found address:', data.address);
+      // Address detection (collect up to 2 unique addresses)
+      if ((data.addresses || []).length < 2 && /\d+.*\b(st|street|ave|avenue|rd|road|blvd|boulevard|suite|ste|floor|fl)\b/i.test(line)) {
+        if (!data.addresses.includes(line)) {
+          data.addresses.push(line);
+          console.log('🏠 Found address:', line);
+        }
       }
     });
 
     // Company detection (more sophisticated)
     if (!data.company) {
-      for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      for (let i = 0; i < Math.min((lines || []).length, 5); i++) {
         const line = lines[i];
         
         // Skip if it's already identified as something else
         if (line === data.name || line === data.title || line === data.email || 
-            line === data.phone || line === data.website || line === data.address) {
+            line === data.phones[0] || line === data.phones[1] || line === data.phones[2] || 
+            line === data.website || line === data.addresses[0] || line === data.addresses[1]) {
           continue;
         }
         
@@ -135,13 +145,19 @@ export default function ScanScreen() {
     if (!data.name && data.email) {
       const emailName = data.email.split('@')[0];
       const nameParts = emailName.split(/[._-]/);
-      if (nameParts.length >= 2) {
-        data.name = nameParts.map(part => 
+      if ((nameParts || []).length >= 2) {
+        data.name = nameParts.map((part: string) => 
           part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
         ).join(' ');
         console.log('👤 Extracted name from email:', data.name);
       }
     }
+
+    // Assign phones and addresses arrays to data
+    data.phones = (data.phones || []).slice(0, 3);
+    data.addresses = (data.addresses || []).slice(0, 2);
+    // Remove old data.address
+    delete data.address;
 
     console.log('📊 Final extracted data:', data);
     return data;
@@ -235,20 +251,18 @@ export default function ScanScreen() {
       
     } catch (error) {
       console.error('❌ Business card scan error:', error);
-      
       if (isMounted) {
         let errorMessage = 'Unable to process the business card. ';
-        
-        if (error.message.includes('API_KEY_INVALID')) {
+        const err = error as Error;
+        if (err.message && err.message.includes('API_KEY_INVALID')) {
           errorMessage += 'API key is invalid.';
-        } else if (error.message.includes('QUOTA_EXCEEDED')) {
+        } else if (err.message && err.message.includes('QUOTA_EXCEEDED')) {
           errorMessage += 'API quota exceeded.';
-        } else if (error.message.includes('Network')) {
+        } else if (err.message && err.message.includes('Network')) {
           errorMessage += 'Please check your internet connection.';
         } else {
           errorMessage += 'Please try again.';
         }
-        
         Alert.alert('Scan Failed', errorMessage);
       }
     } finally {
@@ -259,32 +273,61 @@ export default function ScanScreen() {
   };
 
   const handleSaveCard = () => {
-    if (!extractedData) return;
-    
+    if (!extractedData) {
+      console.log('No extractedData');
+      return;
+    }
     // Validate that we have at least some meaningful data
-    const hasData = extractedData.name || extractedData.email || extractedData.phone || extractedData.company;
-    
+    const hasData = extractedData.name || extractedData.email || (Array.isArray(extractedData.phones) && (extractedData.phones || []).length > 0) || extractedData.company;
     if (!hasData) {
       Alert.alert('No Data', 'Please ensure at least one field has data before saving.');
       return;
     }
-    
+    // If name is missing, prompt for it
+    if (!extractedData.name || extractedData.name.trim() === '') {
+      setShowNamePrompt(true);
+      return;
+    }
     const newCard = {
       id: Math.random().toString(36).substring(2, 11),
       ...extractedData,
+      phones: Array.isArray(extractedData.phones) ? extractedData.phones : [],
+      addresses: Array.isArray(extractedData.addresses) ? extractedData.addresses : [],
       specialty: [],
       languages: ['English'],
-      tags: ['Scanned'],
       notes: 'Added via business card scan',
       favorited: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
-    
+    console.log('Attempting to add card:', newCard);
     addCard(newCard);
-    
     Alert.alert('Success', 'Business card saved successfully!', [
-      { text: 'OK', onPress: () => handleGoBack() }
+      { text: 'OK', onPress: () => router.replace('/') }
+    ]);
+  };
+
+  const handleNamePromptSave = () => {
+    console.log('handleNamePromptSave called');
+    if (!nameInput.trim()) return;
+    const newCard = {
+      id: Math.random().toString(36).substring(2, 11),
+      ...extractedData,
+      name: nameInput.trim(),
+      phones: Array.isArray(extractedData.phones) ? extractedData.phones : [],
+      addresses: Array.isArray(extractedData.addresses) ? extractedData.addresses : [],
+      specialty: [],
+      languages: ['English'],
+      notes: 'Added via business card scan',
+      favorited: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    addCard(newCard);
+    setShowNamePrompt(false);
+    setNameInput('');
+    Alert.alert('Success', 'Business card saved successfully!', [
+      { text: 'OK', onPress: () => router.replace('/') }
     ]);
   };
 
@@ -306,39 +349,27 @@ export default function ScanScreen() {
   };
 
   const updateField = (field: string, value: string) => {
-    setExtractedData(prev => ({
+    setExtractedData((prev: any) => ({
       ...prev,
       [field]: value
     }));
   };
 
-  // Handle permission states - let expo-camera handle everything natively
+  // Permission loading state
   if (!permission) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading camera...</Text>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Loading camera permissions...</Text>
       </View>
     );
   }
 
+  // Permission not granted
   if (!permission.granted) {
     return (
-      <View style={styles.permissionContainer}>
-        <CameraIcon size={64} color={Colors.primary} />
-        <Text style={styles.permissionTitle}>Camera Access Required</Text>
-        <Text style={styles.permissionText}>
-          We need camera access to scan business cards and extract contact information automatically.
-        </Text>
-        <TouchableOpacity 
-          style={styles.permissionButton} 
-          onPress={requestPermission}
-        >
-          <Text style={styles.permissionButtonText}>Allow Camera Access</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Camera permission is required.</Text>
+        <Button title="Grant Permission" onPress={requestPermission} />
       </View>
     );
   }
@@ -349,7 +380,7 @@ export default function ScanScreen() {
       <View style={styles.container}>
         <View style={styles.previewHeader}>
           <TouchableOpacity onPress={handleRetry} style={styles.headerButton}>
-            <X size={24} color={Colors.textPrimary} />
+            <X size={24} color={Colors.cardBackground} />
           </TouchableOpacity>
           <Text style={styles.previewTitle}>Review Scanned Data</Text>
           <TouchableOpacity onPress={() => setEditMode(!editMode)} style={styles.headerButton}>
@@ -369,16 +400,32 @@ export default function ScanScreen() {
                 <Text style={styles.dataLabel}>
                   {key.charAt(0).toUpperCase() + key.slice(1)}:
                 </Text>
-                {editMode ? (
+                {key === 'addresses' ? (
+                  Array.isArray(value) && (value || []).length > 0 ? (
+                    value.map((address: string, idx: number) => (
+                      <Text key={idx} style={styles.dataValue}>{address}</Text>
+                    ))
+                  ) : (
+                    <Text style={styles.dataValue}>Not detected</Text>
+                  )
+                ) : key === 'phones' ? (
+                  Array.isArray(value) && (value || []).length > 0 ? (
+                    value.map((phone: string, idx: number) => (
+                      <Text key={idx} style={styles.dataValue}>{phone}</Text>
+                    ))
+                  ) : (
+                    <Text style={styles.dataValue}>Not detected</Text>
+                  )
+                ) : editMode ? (
                   <TextInput
                     style={styles.editInput}
-                    value={value}
+                    value={typeof value === 'string' ? value : ''}
                     onChangeText={(text) => updateField(key, text)}
                     placeholder={`Enter ${key}`}
                     placeholderTextColor={Colors.textLight}
                   />
                 ) : (
-                  <Text style={styles.dataValue}>{value || 'Not detected'}</Text>
+                  <Text style={styles.dataValue}>{typeof value === 'string' ? value : (value ? String(value) : 'Not detected')}</Text>
                 )}
               </View>
             ))}
@@ -401,6 +448,21 @@ export default function ScanScreen() {
             <Text style={styles.saveButtonText}>Save Contact</Text>
           </TouchableOpacity>
         </View>
+
+        <Modal isVisible={showNamePrompt} onBackdropPress={() => setShowNamePrompt(false)}>
+          <View style={{ backgroundColor: 'white', padding: 24, borderRadius: 12 }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 12 }}>Name not detected</Text>
+            <Text style={{ marginBottom: 12 }}>Please enter a name for this contact:</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 6, padding: 8, marginBottom: 16 }}
+              value={nameInput}
+              onChangeText={setNameInput}
+              placeholder="Enter name"
+              autoFocus
+            />
+            <Button title="Save Contact" onPress={handleNamePromptSave} disabled={!nameInput.trim()} />
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -408,19 +470,18 @@ export default function ScanScreen() {
   // Camera screen - DEDICATED FOR BUSINESS CARD SCANNING ONLY
   return (
     <View style={styles.container}>
-      {/* Camera View - NO CHILDREN */}
-      <Camera
-        style={styles.camera}
-        type={facing}
+      <CameraView
         ref={cameraRef}
+        facing={facing}
+        flash={flash ? 'on' : 'off'}
         onCameraReady={() => console.log('📷 Business card scanning camera ready')}
-        flashMode={flash ? Camera.Constants.FlashMode.torch : Camera.Constants.FlashMode.off}
+        style={styles.camera}
       />
       
       {/* Header Controls - Positioned Absolutely */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.closeButton} onPress={handleGoBack}>
-          <X size={24} color={Colors.white} />
+          <X size={24} color={Colors.cardBackground} />
         </TouchableOpacity>
       </View>
 
@@ -444,7 +505,7 @@ export default function ScanScreen() {
         
         {scanning && (
           <View style={styles.scanningOverlay}>
-            <ActivityIndicator size="large" color={Colors.white} />
+            <ActivityIndicator size="large" color={Colors.cardBackground} />
             <Text style={styles.scanningText}>Scanning business card...</Text>
             <Text style={styles.scanningSubtext}>Processing image with AI</Text>
           </View>
@@ -453,21 +514,13 @@ export default function ScanScreen() {
 
       {/* Camera Controls - Positioned Absolutely */}
       <View style={styles.controls}>
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}
-          disabled={scanning}
-        >
-          <RotateCcw size={24} color={scanning ? Colors.textLight : Colors.white} />
-        </TouchableOpacity>
-
         {/* Flash toggle button */}
         <TouchableOpacity
           style={styles.controlButton}
           onPress={() => setFlash(f => !f)}
           disabled={scanning}
         >
-          <Zap size={24} color={flash ? Colors.warning : Colors.white} />
+          <Zap size={24} color={flash ? Colors.warning : Colors.cardBackground} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -477,8 +530,6 @@ export default function ScanScreen() {
         >
           <View style={styles.captureButtonInner} />
         </TouchableOpacity>
-
-        <View style={styles.controlButton} />
       </View>
     </View>
   );
@@ -534,7 +585,7 @@ const styles = StyleSheet.create({
   permissionButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: Colors.white,
+    color: Colors.cardBackground,
   },
   backButton: {
     backgroundColor: Colors.background,
@@ -588,7 +639,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   instructionText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
@@ -599,7 +650,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   instructionSubtext: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
@@ -617,7 +668,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 20,
     height: 20,
-    borderColor: Colors.white,
+    borderColor: Colors.cardBackground,
     borderWidth: 3,
   },
   topLeft: {
@@ -655,7 +706,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scanningText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 18,
     fontFamily: 'Inter-Medium',
     marginTop: 16,
@@ -692,7 +743,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 4,
-    borderColor: Colors.white,
+    borderColor: Colors.cardBackground,
   },
   captureButtonDisabled: {
     opacity: 0.5,
@@ -700,7 +751,7 @@ const styles = StyleSheet.create({
   captureButtonInner: {
     width: 60,
     height: 60,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 30,
   },
   previewHeader: {
@@ -709,7 +760,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     paddingTop: Platform.OS === 'ios' ? 48 : 24,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
@@ -729,7 +780,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   dataCard: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 12,
     padding: 20,
     marginBottom: 16,
@@ -776,7 +827,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   rawTextCard: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 12,
     padding: 20,
     shadowColor: Colors.shadow,
@@ -800,7 +851,7 @@ const styles = StyleSheet.create({
   previewActions: {
     flexDirection: 'row',
     padding: 16,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
@@ -830,6 +881,6 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: Colors.white,
+    color: Colors.cardBackground,
   },
 });

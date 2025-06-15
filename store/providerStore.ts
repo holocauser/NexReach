@@ -44,19 +44,19 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     setTimeout(() => {
       const filtered = providers.filter(provider => {
         // Filter by specialty
-        if (filter.specialty.length > 0 && 
+        if ((filter.specialty || []).length > 0 && 
             !provider.specialty.some(s => filter.specialty.includes(s))) {
           return false;
         }
         
         // Filter by languages
-        if (filter.languages.length > 0 && 
+        if ((filter.languages || []).length > 0 && 
             !provider.languages.some(l => filter.languages.includes(l))) {
           return false;
         }
         
         // Filter by services
-        if (filter.services.length > 0 && 
+        if ((filter.services || []).length > 0 && 
             !provider.services.some(s => filter.services.includes(s))) {
           return false;
         }

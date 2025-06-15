@@ -14,20 +14,21 @@ import {
   Dimensions
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Star, Phone, Mail, MapPin, Globe, MessageCircle, CreditCard as Edit, Share2, Calendar, Clock, Tag, X } from 'lucide-react-native';
+import { ArrowLeft, Star, Phone, Mail, MapPin, Globe, MessageCircle, CreditCard as Edit, Share2, Calendar, Clock, Tag, X, Pencil } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useCardStore } from '@/store/cardStore';
 import { useReferralStore } from '@/store/referralStore';
 import { BusinessCard } from '@/types';
 import { format } from 'date-fns';
 import TagList from '@/components/TagList';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function ContactDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { getCardById, toggleFavorite, updateLastContacted } = useCardStore();
+  const { getCardById, toggleFavorite, updateLastContacted, updateCard } = useCardStore();
   const { getReferralsByReferrer, getReferralsByRecipient } = useReferralStore();
   
   const [card, setCard] = useState<BusinessCard | null>(null);
@@ -53,19 +54,16 @@ export default function ContactDetailsScreen() {
   const referralsReceived = getReferralsByRecipient(card.id);
   const totalReferralValue = referralsSent.reduce((sum, ref) => sum + ref.value, 0);
 
-  const handleCall = () => {
-    if (!card.phone) return;
-    
-    const cleanPhone = card.phone.replace(/[^\d+]/g, '');
+  const handleCall = (phone?: string) => {
+    const number = phone || (card.phones && card.phones[0]);
+    if (!number) return;
+    const cleanPhone = number.replace(/[^\d+]/g, '');
     const phoneUrl = `tel:${cleanPhone}`;
-    
     if (Platform.OS === 'web') {
       window.open(phoneUrl, '_self');
     } else {
       Linking.openURL(phoneUrl);
     }
-    
-    // Update last contacted
     updateLastContacted(card.id, new Date());
   };
 
@@ -84,17 +82,14 @@ export default function ContactDetailsScreen() {
     updateLastContacted(card.id, new Date());
   };
 
-  const handleSMS = () => {
-    if (!card.phone) return;
-    
-    const cleanPhone = card.phone.replace(/[^\d+]/g, '');
+  const handleSMS = (phone?: string) => {
+    const number = phone || (card.phones && card.phones[0]);
+    if (!number) return;
+    const cleanPhone = number.replace(/[^\d+]/g, '');
     const smsUrl = `sms:${cleanPhone}`;
-    
     if (Platform.OS !== 'web') {
       Linking.openURL(smsUrl);
     }
-    
-    // Update last contacted
     updateLastContacted(card.id, new Date());
   };
 
@@ -113,11 +108,10 @@ export default function ContactDetailsScreen() {
     }
   };
 
-  const handleAddress = () => {
-    if (!card.address) return;
-    
-    const encodedAddress = encodeURIComponent(card.address);
-    
+  const handleAddress = (address?: string) => {
+    const addr = address || (card.addresses && card.addresses[0]);
+    if (!addr) return;
+    const encodedAddress = encodeURIComponent(addr);
     if (Platform.OS === 'web') {
       window.open(`https://maps.google.com/maps?q=${encodedAddress}`, '_blank');
     } else {
@@ -125,7 +119,6 @@ export default function ContactDetailsScreen() {
         ios: `http://maps.apple.com/?q=${encodedAddress}`,
         android: `geo:0,0?q=${encodedAddress}`,
       });
-      
       if (mapsUrl) {
         Linking.openURL(mapsUrl);
       }
@@ -163,6 +156,36 @@ export default function ContactDetailsScreen() {
     setShowImageModal(true);
   };
 
+  const handleImagePick = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedAsset = result.assets[0];
+        if (selectedAsset.uri) {
+          // Update the card in the store
+          const updatedCard = {
+            ...card,
+            profileImage: selectedAsset.uri
+          };
+          updateCard(updatedCard);
+          
+          // Update local state
+          setCard(updatedCard);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -172,10 +195,10 @@ export default function ContactDetailsScreen() {
         <Text style={styles.headerTitle}>Contact Details</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity 
-            onPress={() => router.push(`/edit-card/${card.id}`)} 
+            onPress={() => router.push(`/edit-card/${id}`)}
             style={styles.headerButton}
           >
-            <Edit size={24} color={Colors.white} />
+            <Pencil size={24} color={Colors.white} />
           </TouchableOpacity>
           <TouchableOpacity 
             onPress={() => toggleFavorite(card.id)} 
@@ -237,7 +260,7 @@ export default function ContactDetailsScreen() {
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleCall}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => handleCall()}>
             <Phone size={24} color={Colors.success} />
             <Text style={styles.actionButtonText}>Call</Text>
           </TouchableOpacity>
@@ -247,7 +270,7 @@ export default function ContactDetailsScreen() {
             <Text style={styles.actionButtonText}>Email</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.actionButton} onPress={handleSMS}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => handleSMS()}>
             <MessageCircle size={24} color={Colors.accent} />
             <Text style={styles.actionButtonText}>SMS</Text>
           </TouchableOpacity>
@@ -261,24 +284,22 @@ export default function ContactDetailsScreen() {
         {/* Contact Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Contact Information</Text>
-          
-          <TouchableOpacity style={styles.contactRow} onPress={handleCall}>
-            <Phone size={20} color={Colors.primary} />
-            <Text style={styles.contactText}>{card.phone}</Text>
-          </TouchableOpacity>
-          
+          {(card.phones || []).map((phone, idx) => (
+            <TouchableOpacity key={idx} style={styles.contactRow} onPress={() => handleCall(phone)}>
+              <Phone size={20} color={Colors.primary} />
+              <Text style={styles.contactText}>{phone}</Text>
+            </TouchableOpacity>
+          ))}
           <TouchableOpacity style={styles.contactRow} onPress={handleEmail}>
             <Mail size={20} color={Colors.primary} />
             <Text style={styles.contactText}>{card.email}</Text>
           </TouchableOpacity>
-          
-          {card.address && (
-            <TouchableOpacity style={styles.contactRow} onPress={handleAddress}>
+          {(card.addresses || []).map((address, idx) => (
+            <TouchableOpacity key={idx} style={styles.contactRow} onPress={() => handleAddress(address)}>
               <MapPin size={20} color={Colors.primary} />
-              <Text style={styles.contactText}>{card.address}</Text>
+              <Text style={styles.contactText}>{address}</Text>
             </TouchableOpacity>
-          )}
-          
+          ))}
           {card.website && (
             <TouchableOpacity style={styles.contactRow} onPress={handleWebsite}>
               <Globe size={20} color={Colors.primary} />
@@ -291,14 +312,14 @@ export default function ContactDetailsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Professional Information</Text>
           
-          {card.specialty.length > 0 && (
+          {(card.specialty || []).length > 0 && (
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Specialties:</Text>
               <Text style={styles.infoValue}>{card.specialty.join(', ')}</Text>
             </View>
           )}
           
-          {card.languages.length > 0 && (
+          {(card.languages || []).length > 0 && (
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Languages:</Text>
               <Text style={styles.infoValue}>{card.languages.join(', ')}</Text>
@@ -307,7 +328,7 @@ export default function ContactDetailsScreen() {
         </View>
 
         {/* Tags */}
-        {card.tags.length > 0 && (
+        {(card.tags || []).length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Tag size={20} color={Colors.primary} />
@@ -323,12 +344,12 @@ export default function ContactDetailsScreen() {
           
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{referralsSent.length}</Text>
+              <Text style={styles.statValue}>{(referralsSent || []).length}</Text>
               <Text style={styles.statLabel}>Referrals Sent</Text>
             </View>
             
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{referralsReceived.length}</Text>
+              <Text style={styles.statValue}>{(referralsReceived || []).length}</Text>
               <Text style={styles.statLabel}>Referrals Received</Text>
             </View>
             

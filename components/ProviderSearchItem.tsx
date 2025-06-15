@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Linking, Platform } from 'react-native';
 import { Star, MapPin, Phone, Globe, Clock, Navigation } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 
@@ -25,6 +25,11 @@ interface PlaceDetails {
     photo_reference: string;
   }>;
   types: string[];
+  location?: {
+    lat: number;
+    lng: number;
+  };
+  address?: string;
 }
 
 interface ProviderSearchItemProps {
@@ -46,18 +51,19 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
   userLocation,
   searchLocation,
 }) => {
-  
+  // Debug log for provider object
+  console.log('Provider:', provider);
+
   // Calculate distance using user's actual location if available, otherwise use search location
   const calculateDistance = (): number | null => {
     const referenceLocation = userLocation || searchLocation;
-    if (!referenceLocation) return null;
-    
+    if (!referenceLocation || !provider.location) return null;
     const R = 3959; // Earth's radius in miles
-    const dLat = (provider.geometry.location.lat - referenceLocation.lat) * Math.PI / 180;
-    const dLon = (provider.geometry.location.lng - referenceLocation.lng) * Math.PI / 180;
+    const dLat = (provider.location.lat - referenceLocation.lat) * Math.PI / 180;
+    const dLon = (provider.location.lng - referenceLocation.lng) * Math.PI / 180;
     const a = 
       Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(referenceLocation.lat * Math.PI / 180) * Math.cos(provider.geometry.location.lat * Math.PI / 180) * 
+      Math.cos(referenceLocation.lat * Math.PI / 180) * Math.cos(provider.location.lat * Math.PI / 180) * 
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
@@ -65,7 +71,7 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
 
   const distance = calculateDistance();
 
-  // Get photo URL if available
+  // Get photo URL if available (use initial search result's photos array)
   const getPhotoUrl = (): string | null => {
     if (provider.photos && provider.photos.length > 0) {
       return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${provider.photos[0].photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
@@ -73,34 +79,48 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
     return null;
   };
 
-  // Determine provider type from business types
-  const getProviderType = (): string => {
-    const types = provider.types.join(' ').toLowerCase();
-    const name = provider.name.toLowerCase();
-    
-    if (types.includes('hospital') || types.includes('health') || name.includes('hospital')) {
-      return 'Hospital';
-    } else if (types.includes('doctor') || types.includes('physician') || name.includes('dr.') || name.includes('doctor')) {
-      return 'Doctor';
-    } else if (types.includes('lawyer') || types.includes('attorney') || types.includes('legal') || name.includes('law') || name.includes('attorney') || name.includes('esq')) {
-      return 'Attorney';
-    } else if (types.includes('dentist') || name.includes('dental')) {
-      return 'Dentist';
-    } else if (types.includes('pharmacy') || name.includes('pharmacy')) {
-      return 'Pharmacy';
+  const photoUrl = getPhotoUrl();
+
+  // Open directions in maps
+  const handleDirections = () => {
+    let url = '';
+    if (provider.location) {
+      // Use coordinates if available
+      url = Platform.select({
+        ios: `http://maps.apple.com/?daddr=${provider.location.lat},${provider.location.lng}`,
+        android: `geo:${provider.location.lat},${provider.location.lng}?q=${provider.location.lat},${provider.location.lng}`,
+      }) || '';
+    } else if (provider.address || provider.formatted_address) {
+      // Fallback to address
+      const address = encodeURIComponent(provider.address || provider.formatted_address);
+      url = Platform.select({
+        ios: `http://maps.apple.com/?daddr=${address}`,
+        android: `geo:0,0?q=${address}`,
+      }) || '';
     }
-    return 'Professional';
+    if (url) Linking.openURL(url);
   };
 
-  const photoUrl = getPhotoUrl();
-  const providerType = getProviderType();
+  // Open website
+  const handleWebsite = () => {
+    if (!provider.website) return;
+    let websiteUrl = provider.website;
+    if (!websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://')) {
+      websiteUrl = `https://${websiteUrl}`;
+    }
+    Linking.openURL(websiteUrl);
+  };
+
+  // Call provider
+  const handleCall = () => {
+    if (!provider.formatted_phone_number) return;
+    const cleanPhone = provider.formatted_phone_number.replace(/[^\d+]/g, '');
+    const phoneUrl = `tel:${cleanPhone}`;
+    Linking.openURL(phoneUrl);
+  };
 
   return (
-    <TouchableOpacity
-      style={styles.container}
-      onPress={() => onPress(provider)}
-      activeOpacity={0.8}
-    >
+    <View style={styles.container}>
       <View style={styles.card}>
         <View style={styles.header}>
           <View style={styles.imageContainer}>
@@ -117,15 +137,15 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
           
           <View style={styles.headerContent}>
             <Text style={styles.name} numberOfLines={2}>{provider.name}</Text>
-            <Text style={styles.type}>{providerType}</Text>
+            <Text style={styles.type}>{provider.types && provider.types.length > 0 ? provider.types[0] : ''}</Text>
             
-            {provider.rating && (
+            {(typeof provider.rating !== 'undefined' || typeof provider.user_ratings_total !== 'undefined') && (
               <View style={styles.ratingContainer}>
                 <Star size={14} color={Colors.favorite} fill={Colors.favorite} />
                 <Text style={styles.ratingText}>
-                  {provider.rating.toFixed(1)}
+                  {typeof provider.rating !== 'undefined' ? provider.rating.toFixed(1) : '-'}
                 </Text>
-                {provider.user_ratings_total && (
+                {typeof provider.user_ratings_total !== 'undefined' && (
                   <Text style={styles.reviewCount}>
                     ({provider.user_ratings_total} reviews)
                   </Text>
@@ -140,7 +160,7 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
                 styles.statusBadge,
                 { backgroundColor: provider.opening_hours.open_now ? Colors.success : Colors.error }
               ]}>
-                <Clock size={12} color={Colors.white} />
+                <Clock size={12} color={Colors.cardBackground} />
                 <Text style={styles.statusText}>
                   {provider.opening_hours.open_now ? 'Open' : 'Closed'}
                 </Text>
@@ -152,7 +172,7 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
         <View style={styles.addressContainer}>
           <MapPin size={16} color={Colors.primary} />
           <Text style={styles.address} numberOfLines={2}>
-            {provider.formatted_address}
+            {provider.address || provider.formatted_address || (provider.location ? `${provider.location.lat}, ${provider.location.lng}` : '')}
           </Text>
           {distance !== null && (
             <View style={styles.distanceContainer}>
@@ -170,7 +190,7 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
           {provider.formatted_phone_number && (
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => onCall(provider.formatted_phone_number!)}
+              onPress={handleCall}
             >
               <Phone size={18} color={Colors.success} />
               <Text style={[styles.actionText, { color: Colors.success }]}>Call</Text>
@@ -180,7 +200,7 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
           {provider.website && (
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => onWebsite(provider.website!)}
+              onPress={handleWebsite}
             >
               <Globe size={18} color={Colors.primary} />
               <Text style={styles.actionText}>Website</Text>
@@ -189,14 +209,14 @@ const ProviderSearchItem: React.FC<ProviderSearchItemProps> = ({
           
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => onPress(provider)}
+            onPress={handleDirections}
           >
             <Navigation size={18} color={Colors.accent} />
             <Text style={[styles.actionText, { color: Colors.accent }]}>Directions</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 };
 
@@ -206,7 +226,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   card: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     shadowColor: Colors.shadow,
@@ -236,7 +256,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   placeholderText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 24,
     fontFamily: 'Inter-SemiBold',
   },
@@ -281,11 +301,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    backgroundColor: Colors.cardBackground,
   },
   statusText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: Colors.white,
+    color: Colors.cardBackground,
     marginLeft: 4,
   },
   addressContainer: {

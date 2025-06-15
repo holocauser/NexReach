@@ -1,10 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, Alert, Image } from 'react-native';
-import { Star, CreditCard as Edit, Phone, Mail, ArrowRight, Mic, MapPin, Globe, MessageCircle, Users, User, FileText } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, Alert, Image, Modal, TextInput, Dimensions } from 'react-native';
+import { Star, CreditCard as Edit, Phone, Mail, ArrowRight, Mic, MapPin, Globe, MessageCircle, Users, User, FileText, X, Share2, Calendar } from 'lucide-react-native';
 import { BusinessCard } from '@/types';
 import Colors from '@/constants/Colors';
 import { format } from 'date-fns';
 import TagList from './TagList';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { Audio } from 'expo-av';
+import * as Haptics from 'expo-haptics';
+import { useCardStore } from '@/store/cardStore';
+import VoiceNoteModal from './VoiceNoteModal';
+import { VoiceNote } from '@/types';
+import globalStyles, { spacing, typography, shadows } from '@/constants/Styles';
+import { useRouter } from 'expo-router';
+
+const { width: screenWidth } = Dimensions.get('window');
+const cardWidth = (screenWidth - spacing.md * 3) / 2;
 
 interface BusinessCardItemProps {
   card: BusinessCard;
@@ -12,7 +24,7 @@ interface BusinessCardItemProps {
   onToggleFavorite: (id: string) => void;
   onEdit: (id: string) => void;
   onAddVoiceNote: (id: string) => void;
-  onLogReferral: (id: string) => void;
+  viewMode?: 'grid' | 'list';
 }
 
 const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
@@ -21,59 +33,35 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
   onToggleFavorite,
   onEdit,
   onAddVoiceNote,
-  onLogReferral,
+  viewMode = 'list',
 }) => {
   
+  const [showFilesModal, setShowFilesModal] = React.useState(false);
+  const { updateCard } = useCardStore();
+  const [activeTab, setActiveTab] = React.useState<'files' | 'voice'>('files');
+  const [showVoiceModal, setShowVoiceModal] = React.useState(false);
+  const [recording, setRecording] = React.useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = React.useState(false);
+  const [recordedUri, setRecordedUri] = React.useState<string | null>(null);
+  const [recordingError, setRecordingError] = React.useState<string | null>(null);
+  const [playingNoteId, setPlayingNoteId] = React.useState<string | null>(null);
+  const [sound, setSound] = React.useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [playbackStatus, setPlaybackStatus] = React.useState<any>(null);
+  const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null);
+  const [editingNoteName, setEditingNoteName] = React.useState('');
+  const [previewSound, setPreviewSound] = React.useState<Audio.Sound | null>(null);
+  const [previewStatus, setPreviewStatus] = React.useState<any>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = React.useState(false);
+  const router = useRouter();
+  
   const handlePhoneCall = () => {
-    if (!card.phone) {
+    const phoneNumber = card.phones[0];
+    if (!phoneNumber) {
       Alert.alert('No Phone Number', 'This contact does not have a phone number.');
       return;
     }
-    
-    // Clean phone number for calling
-    const cleanPhone = card.phone.replace(/[^\d+]/g, '');
-    const phoneUrl = `tel:${cleanPhone}`;
-    
-    if (Platform.OS === 'web') {
-      // For web, show an alert with the phone number
-      Alert.alert(
-        'Call Contact',
-        `Would you like to call ${card.name}?\n\nPhone: ${card.phone}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Call', 
-            onPress: () => {
-              // On web, try to open the tel: link
-              window.open(phoneUrl, '_self');
-            }
-          }
-        ]
-      );
-    } else {
-      // For mobile, check if calling is supported
-      Linking.canOpenURL(phoneUrl)
-        .then((supported) => {
-          if (supported) {
-            Alert.alert(
-              'Call Contact',
-              `Call ${card.name}?\n\nPhone: ${card.phone}`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Call', 
-                  onPress: () => Linking.openURL(phoneUrl)
-                }
-              ]
-            );
-          } else {
-            Alert.alert('Cannot Make Call', 'Phone calling is not supported on this device.');
-          }
-        })
-        .catch(() => {
-          Alert.alert('Error', 'Unable to make phone call.');
-        });
-    }
+    Linking.openURL(`tel:${phoneNumber}`);
   };
 
   const handleEmailPress = () => {
@@ -102,29 +90,12 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
   };
 
   const handleSMSPress = () => {
-    if (!card.phone) {
+    const phoneNumber = card.phones[0];
+    if (!phoneNumber) {
       Alert.alert('No Phone Number', 'This contact does not have a phone number.');
       return;
     }
-    
-    const cleanPhone = card.phone.replace(/[^\d+]/g, '');
-    const smsUrl = `sms:${cleanPhone}`;
-    
-    if (Platform.OS === 'web') {
-      Alert.alert('SMS Not Available', 'SMS is not available on web browsers.');
-    } else {
-      Linking.canOpenURL(smsUrl)
-        .then((supported) => {
-          if (supported) {
-            Linking.openURL(smsUrl);
-          } else {
-            Alert.alert('Cannot Send SMS', 'SMS is not supported on this device.');
-          }
-        })
-        .catch(() => {
-          Alert.alert('Error', 'Unable to open SMS.');
-        });
-    }
+    Linking.openURL(`sms:${phoneNumber}`);
   };
 
   const handleWebsitePress = () => {
@@ -155,14 +126,13 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
     }
   };
 
-  const handleAddressPress = () => {
-    if (!card.address) {
+  const handleAddressPress = (address?: string) => {
+    const addr = address || (card.addresses && card.addresses[0]);
+    if (!addr) {
       Alert.alert('No Address', 'This contact does not have an address.');
       return;
     }
-    
-    const encodedAddress = encodeURIComponent(card.address);
-    
+    const encodedAddress = encodeURIComponent(addr);
     if (Platform.OS === 'web') {
       window.open(`https://maps.google.com/maps?q=${encodedAddress}`, '_blank');
     } else {
@@ -170,426 +140,842 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
         ios: `http://maps.apple.com/?q=${encodedAddress}`,
         android: `geo:0,0?q=${encodedAddress}`,
       });
-      
       if (mapsUrl) {
         Linking.openURL(mapsUrl);
       }
     }
   };
 
-  const handleReferralPress = () => {
-    Alert.alert(
-      'Create Referral',
-      `Create a referral involving ${card.name}?\n\nYou can track referrals sent to or received from this contact.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Create Referral', 
-          onPress: () => onLogReferral(card.id)
-        }
-      ]
-    );
+  const handleReferPress = () => {
+    router.push(`/add-referral/${card.id}`);
   };
 
-  return (
-    <TouchableOpacity
-      style={styles.container}
-      onPress={() => onPress(card.id)}
-      activeOpacity={0.92}
-    >
-      <View style={styles.cardOuter}>
-        <View style={styles.accentBar} />
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.headerContent}>
-              <Text style={styles.name}>{card.name}</Text>
-              <Text style={styles.company}>{card.company}</Text>
-              <Text style={styles.title}>{card.title}</Text>
-            </View>
-            <View style={styles.headerIcons}>
-              <TouchableOpacity
-                style={styles.favoriteButton}
-                onPress={() => onToggleFavorite(card.id)}
-              >
-                <Star
-                  size={24}
-                  color={card.favorited ? Colors.favorite : Colors.textLight}
-                  fill={card.favorited ? Colors.favorite : 'transparent'}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.fileButton}
-                onPress={() => {}}
-              >
-                <FileText size={16} color={Colors.textLight} />
-                {card.files && card.files.length > 0 && (
-                  <View style={styles.fileBadge}>
-                    <Text style={styles.fileBadgeText}>{card.files.length}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+  const handleAddFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if ('type' in result && result.type === 'success' && 'uri' in result && 'name' in result) {
+        const newFile = {
+          name: result.name as string,
+          url: result.uri as string,
+        };
+        const updatedCard = {
+          ...card,
+          files: [...(card.files || []), newFile],
+        };
+        updateCard(updatedCard);
+        Alert.alert('File attached', 'Your file was successfully attached.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to attach file.');
+      console.error('Error picking file:', error);
+    }
+  };
 
-          <View style={styles.contactInfo}>
-            <TouchableOpacity 
-              style={styles.contactItem}
-              onPress={handlePhoneCall}
-              activeOpacity={0.7}
-            >
-              <Phone size={16} color={Colors.primary} />
-              <Text style={[styles.contactText, styles.clickableText]}>{card.phone}</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.contactItem}
-              onPress={handleEmailPress}
-              activeOpacity={0.7}
-            >
-              <Mail size={16} color={Colors.primary} />
-              <Text style={[styles.contactText, styles.clickableText]}>{card.email}</Text>
-            </TouchableOpacity>
+  const handleOpenFile = async (fileUrl: string) => {
+    try {
+      await Linking.openURL(fileUrl);
+    } catch (error) {
+      console.error('Error opening file:', error);
+    }
+  };
 
-            {card.address && (
-              <TouchableOpacity 
-                style={styles.contactItem}
-                onPress={handleAddressPress}
-                activeOpacity={0.7}
-              >
-                <MapPin size={16} color={Colors.primary} />
-                <Text style={[styles.contactText, styles.clickableText]} numberOfLines={1}>
-                  {card.address}
-                </Text>
-              </TouchableOpacity>
-            )}
+  const startRecording = async () => {
+    try {
+      console.log('Voice Note: Requesting microphone permission...');
+      setRecordingError(null);
+      const { status } = await Audio.requestPermissionsAsync();
+      console.log('Voice Note: Microphone permission status:', status);
+      if (status !== 'granted') {
+        setRecordingError('Permission to access microphone is required!');
+        Alert.alert('Permission Denied', 'Microphone access is required to record voice notes.');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      console.log('Voice Note: Audio mode set.');
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      console.log('Voice Note: Prepared to record.');
+      await rec.startAsync();
+      console.log('Voice Note: Recording started.');
+      setRecording(rec);
+      setIsRecording(true);
+    } catch (err) {
+      setRecordingError('Failed to start recording.');
+      Alert.alert('Error', 'Failed to start recording.');
+      console.error('Voice Note: Error starting recording:', err);
+    }
+  };
 
-            {card.website && (
-              <TouchableOpacity 
-                style={styles.contactItem}
-                onPress={handleWebsitePress}
-                activeOpacity={0.7}
-              >
-                <Globe size={16} color={Colors.primary} />
-                <Text style={[styles.contactText, styles.clickableText]} numberOfLines={1}>
-                  {card.website}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+  const stopRecording = async () => {
+    try {
+      if (!recording) return;
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecordedUri(uri || null);
+      setIsRecording(false);
+      setRecording(null);
+    } catch (err) {
+      setRecordingError('Failed to stop recording.');
+    }
+  };
 
-          <View style={styles.tagListRow}>
-            {card.tags.slice(0, 3).map((tag, idx) => (
-              <View key={tag} style={styles.tagPill}>
-                <Text style={styles.tagPillText}>{tag}</Text>
-              </View>
-            ))}
-            {card.tags.length > 3 && (
-              <View style={styles.tagPill}>
-                <Text style={styles.tagPillText}>+{card.tags.length - 3} more</Text>
-              </View>
-            )}
-          </View>
+  const cancelRecording = () => {
+    setRecording(null);
+    setIsRecording(false);
+    setRecordedUri(null);
+    setRecordingError(null);
+  };
 
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#F2F7FF' }]}
-              onPress={handlePhoneCall}
-            >
-              <Phone size={16} color={Colors.success} />
-              <Text style={[styles.actionText, { color: Colors.success }]}>Call</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#F7F6FF' }]}
-              onPress={handleSMSPress}
-            >
-              <MessageCircle size={16} color={Colors.accent} />
-              <Text style={[styles.actionText, { color: Colors.accent }]}>SMS</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#FFF9F2' }]}
-              onPress={handleReferralPress}
-            >
-              <Users size={16} color={Colors.warning} />
-              <Text style={[styles.actionText, { color: Colors.warning }]}>Refer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#FFF5F5' }]}
-              onPress={() => onAddVoiceNote(card.id)}
-            >
-              <Mic size={16} color={Colors.error} />
-              <Text style={[styles.actionText, { color: Colors.error }]} numberOfLines={1} ellipsizeMode="tail">Record</Text>
-              {card.voiceNotes && card.voiceNotes.length > 0 && (
-                <View style={styles.voiceNoteBadgeAction}>
-                  <Text style={styles.voiceNoteBadgeText}>{card.voiceNotes.length}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
+  const saveVoiceNote = () => {
+    if (!recordedUri) return;
+    const newNote = {
+      id: Date.now().toString(),
+      cardId: card.id,
+      recording: recordedUri,
+      duration: 0, // Optionally calculate duration
+      createdAt: new Date(),
+    };
+    const updatedCard = {
+      ...card,
+      voiceNotes: [...(card.voiceNotes || []), newNote],
+    };
+    updateCard(updatedCard);
+    Alert.alert('Voice Note Saved', 'Your voice note was saved.');
+    setShowVoiceModal(false);
+    cancelRecording();
+    // Optionally force refresh: onEdit(card.id);
+  };
 
-          {card.lastContacted && (
-            <View style={styles.lastContactedContainer}>
-              <Text style={styles.lastContactedLabel}>Last Contacted:</Text>
-              <Text style={styles.lastContactedDate}>
-                {format(card.lastContacted, 'MMM d, yyyy')}
-              </Text>
-              {card.reminder && (
-                <View style={styles.reminderBadge}>
-                  <Text style={styles.reminderText}>Reminder</Text>
-                </View>
-              )}
+  const playVoiceNote = async (note: any) => {
+    try {
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      const { sound: newSound, status } = await Audio.Sound.createAsync(
+        { uri: note.recording },
+        { shouldPlay: true },
+        (status) => {
+          setPlaybackStatus(status);
+          if (status.isLoaded && status.didJustFinish) {
+            setIsPlaying(false);
+            setPlayingNoteId(null);
+            newSound.unloadAsync();
+          }
+        }
+      );
+      await newSound.setVolumeAsync(1.0);
+      setSound(newSound);
+      setPlayingNoteId(note.id);
+      setIsPlaying(true);
+      setPlaybackStatus(status);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (err) {
+      setIsPlaying(false);
+      setPlayingNoteId(null);
+    }
+  };
+
+  const pauseVoiceNote = async () => {
+    if (sound) {
+      await sound.pauseAsync();
+      setIsPlaying(false);
+    }
+  };
+
+  const resumeVoiceNote = async () => {
+    if (sound) {
+      await sound.playAsync();
+      setIsPlaying(true);
+    }
+  };
+
+  const stopVoiceNote = async () => {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+      setIsPlaying(false);
+      setPlayingNoteId(null);
+    }
+  };
+
+  const playPreview = async () => {
+    if (!recordedUri) return;
+    if (previewSound) {
+      await previewSound.unloadAsync();
+      setPreviewSound(null);
+    }
+    const { sound: newSound } = await Audio.Sound.createAsync({ uri: recordedUri }, { shouldPlay: true }, (status) => {
+      setPreviewStatus(status);
+      if (status.isLoaded && status.didJustFinish) {
+        setIsPreviewPlaying(false);
+        newSound.unloadAsync();
+      }
+    });
+    setPreviewSound(newSound);
+    setIsPreviewPlaying(true);
+  };
+
+  const pausePreview = async () => {
+    if (previewSound) {
+      await previewSound.pauseAsync();
+      setIsPreviewPlaying(false);
+    }
+  };
+
+  const stopPreview = async () => {
+    if (previewSound) {
+      await previewSound.stopAsync();
+      await previewSound.unloadAsync();
+      setPreviewSound(null);
+      setIsPreviewPlaying(false);
+    }
+  };
+
+  const saveNoteName = (noteId: string) => {
+    const updatedNotes = (card.voiceNotes || []).map(n => n.id === noteId ? { ...n, name: editingNoteName } : n);
+    updateCard({ ...card, voiceNotes: updatedNotes });
+    setEditingNoteId(null);
+    setEditingNoteName('');
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [sound]);
+
+  const renderCardContent = () => (
+    <>
+      <View style={styles.header}>
+        <View style={styles.profileSection}>
+          {card.profileImage ? (
+            <Image source={{ uri: card.profileImage }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>{card.name.charAt(0)}</Text>
             </View>
           )}
+          <View style={styles.nameSection}>
+            <Text style={styles.name}>{card.name}</Text>
+            {card.title && <Text style={styles.title}>{card.title}</Text>}
+            {card.company && <Text style={styles.company}>{card.company}</Text>}
+            {card.tags && card.tags.length > 0 && (
+              <View style={styles.tagsRow}>
+                {card.tags.map((tag, idx) => (
+                  <View key={idx} style={styles.tagBadge}>
+                    <Text style={styles.tagBadgeText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={() => onToggleFavorite(card.id)}
+          >
+            <Star
+              size={24}
+              color={card.favorited ? Colors.favorite : Colors.textLight}
+              fill={card.favorited ? Colors.favorite : 'transparent'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.fileButton}
+            onPress={() => setShowFilesModal(true)}
+          >
+            <FileText size={20} color={Colors.textSecondary} />
+            {(card.files && card.files.filter(f => f && f.url).length > 0) && (
+              <View style={styles.fileBadge}>
+                <Text style={styles.fileBadgeText}>{card.files.filter(f => f && f.url).length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       </View>
+
+      <View style={styles.contactInfoSection}>
+        {(card.phones && card.phones.length > 0
+          ? card.phones
+          : card.phone
+            ? [card.phone]
+            : []
+        ).map((phone, idx) => (
+          <TouchableOpacity key={idx} style={styles.contactRow} onPress={() => Linking.openURL(`tel:${phone}`)}>
+            <Phone size={18} color={Colors.primary} />
+            <Text style={styles.contactRowText}>{phone}</Text>
+          </TouchableOpacity>
+        ))}
+        {card.email && (
+          <TouchableOpacity style={styles.contactRow} onPress={handleEmailPress}>
+            <Mail size={18} color={Colors.primary} />
+            <Text style={styles.contactRowText}>{card.email}</Text>
+          </TouchableOpacity>
+        )}
+        {card.website && (
+          <TouchableOpacity style={styles.contactRow} onPress={handleWebsitePress}>
+            <Globe size={18} color={Colors.primary} />
+            <Text style={styles.contactRowText}>{card.website}</Text>
+          </TouchableOpacity>
+        )}
+        {(card.addresses && card.addresses.length > 0
+          ? card.addresses
+          : card.address
+            ? [card.address]
+            : []
+        ).map((address, idx) => (
+          <TouchableOpacity key={idx} style={styles.contactRow} onPress={() => handleAddressPress(address)}>
+            <MapPin size={18} color={Colors.primary} />
+            <Text style={styles.contactRowText}>{address}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity style={styles.actionButton} onPress={() => handlePhoneCall()}>
+          <Phone size={20} color={Colors.primary} />
+          <Text style={styles.actionButtonText}>Call</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => handleSMSPress()}>
+          <MessageCircle size={20} color={Colors.primary} />
+          <Text style={styles.actionButtonText}>Message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={handleReferPress}>
+          <ArrowRight size={20} color={Colors.primary} />
+          <Text style={styles.actionButtonText}>Refer</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setShowVoiceModal(true)}>
+          <Mic size={20} color={Colors.primary} />
+          <Text style={styles.actionButtonText}>Record</Text>
+        </TouchableOpacity>
+      </View>
+
+      {card.lastContacted && (
+        <View style={styles.lastContactedContainer}>
+          <Calendar size={16} color={Colors.textSecondary} />
+          <Text style={styles.lastContactedText}>
+            Last contact: {format(card.lastContacted, 'MMM d, yyyy')}
+          </Text>
+        </View>
+      )}
+    </>
+  );
+
+  return (
+          <TouchableOpacity
+      style={[
+        styles.container,
+        viewMode === 'grid' ? styles.gridContainer : styles.listContainer
+      ]}
+      onPress={() => onPress(card.id)}
+    >
+      {renderCardContent()}
+      
+      <Modal
+        visible={showFilesModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowFilesModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Files & Voice Notes</Text>
+              <TouchableOpacity onPress={() => setShowFilesModal(false)} style={styles.modalCloseButton}>
+                <X size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
+            </View>
+            <View style={styles.tabSwitcher}>
+          <TouchableOpacity
+                style={[styles.tabButton, activeTab === 'files' && styles.tabButtonActive]}
+                onPress={() => setActiveTab('files')}
+          >
+                <Text style={[styles.tabButtonText, activeTab === 'files' && styles.tabButtonTextActive]}>Files</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+                style={[styles.tabButton, activeTab === 'voice' && styles.tabButtonActive]}
+                onPress={() => setActiveTab('voice')}
+              >
+                <Text style={[styles.tabButtonText, activeTab === 'voice' && styles.tabButtonTextActive]}>Voice Notes</Text>
+              </TouchableOpacity>
+            </View>
+            {activeTab === 'files' ? (
+              <>
+                {(card.files || []).length === 0 && <Text style={{ color: Colors.textSecondary, marginBottom: 12 }}>No files attached yet.</Text>}
+                {(card.files || []).map((file, idx) => (
+                  <TouchableOpacity key={file.url} style={styles.fileItem} onPress={() => handleOpenFile(file.url)}>
+                    <FileText size={16} color={Colors.primary} />
+                    <Text style={styles.fileItemText}>{file.name}</Text>
+                  </TouchableOpacity>
+                ))}
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity style={styles.attachFileButton} onPress={handleAddFile}>
+                    <FileText size={20} color={Colors.primary} />
+                    <Text style={styles.attachFileText}>Attach File</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                {(card.voiceNotes || []).length === 0 && <Text style={{ color: Colors.textSecondary, marginBottom: 12 }}>No voice notes yet.</Text>}
+                {(card.voiceNotes || []).map((note, idx) => {
+                  const isCurrent = playingNoteId === note.id;
+                  const durationSec = note.duration ? Math.round(note.duration / 1000) : playbackStatus && isCurrent && playbackStatus.durationMillis ? Math.round(playbackStatus.durationMillis / 1000) : 0;
+                  const positionSec = playbackStatus && isCurrent && playbackStatus.positionMillis ? Math.round(playbackStatus.positionMillis / 1000) : 0;
+                  return (
+                    <View key={note.id} style={styles.fileItem}>
+                      <Mic size={16} color={Colors.error} />
+                      {editingNoteId === note.id ? (
+                        <TextInput
+                          value={editingNoteName}
+                          onChangeText={setEditingNoteName}
+                          onBlur={() => saveNoteName(note.id)}
+                          style={styles.voiceNoteEditInput}
+                          autoFocus
+                        />
+                      ) : (
+                        <Text style={styles.fileItemText}>{note.name || `Voice Note ${idx + 1}`}</Text>
+                      )}
+                      <TouchableOpacity onPress={() => { setEditingNoteId(note.id); setEditingNoteName(note.name || `Voice Note ${idx + 1}`); }} style={styles.editIcon}>
+            <Edit size={16} color={Colors.primary} />
+                      </TouchableOpacity>
+                      <Text style={styles.voiceNoteDuration}>{positionSec}s / {durationSec}s</Text>
+                      {isCurrent && isPlaying ? (
+                        <TouchableOpacity onPress={pauseVoiceNote} style={[styles.playButton, styles.playButtonActive]} disabled={!isCurrent}>
+                          <Text style={styles.playButtonText}>Pause</Text>
+                        </TouchableOpacity>
+                      ) : isCurrent && !isPlaying ? (
+                        <TouchableOpacity onPress={resumeVoiceNote} style={styles.playButton} disabled={!isCurrent}>
+                          <Text style={styles.playButtonText}>Resume</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity onPress={() => playVoiceNote(note)} style={styles.playButton} disabled={isPlaying && !isCurrent}>
+                          <Text style={styles.playButtonText}>Play</Text>
+          </TouchableOpacity>
+                      )}
+                      {isCurrent && (
+                        <TouchableOpacity onPress={stopVoiceNote} style={styles.stopButton}>
+                          <Text style={styles.stopButtonText}>Stop</Text>
+          </TouchableOpacity>
+                      )}
+                      {isCurrent && playbackStatus && playbackStatus.durationMillis ? (
+                        <View style={styles.progressBarContainer}>
+                          <View style={[styles.progressBar, { width: `${(playbackStatus.positionMillis / playbackStatus.durationMillis) * 100}%` }]} />
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+      <VoiceNoteModal
+        visible={showVoiceModal}
+        onClose={() => setShowVoiceModal(false)}
+        onSave={(uri, name, duration) => {
+          const newNote = {
+            id: Date.now().toString(),
+            cardId: card.id,
+            recording: uri,
+            name,
+            duration,
+            createdAt: new Date(),
+          };
+          const updatedCard = {
+            ...card,
+            voiceNotes: [...(card.voiceNotes || []), newNote],
+          };
+          updateCard(updatedCard);
+        }}
+      />
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
-    marginHorizontal: 6,
+    backgroundColor: Colors.cardBackground,
+    borderRadius: 16,
+    ...shadows.small,
   },
-  cardOuter: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    marginBottom: 24,
-    marginHorizontal: 8,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 4,
-    borderRadius: 18,
-    backgroundColor: 'transparent',
+  listContainer: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
   },
-  accentBar: {
-    width: 6,
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
-    backgroundColor: Colors.primary,
-    marginRight: -6,
-  },
-  card: {
-    flex: 1,
-    backgroundColor: Colors.white,
-    borderTopRightRadius: 18,
-    borderBottomRightRadius: 18,
-    borderTopLeftRadius: 0,
-    borderBottomLeftRadius: 0,
-    paddingVertical: 22,
-    paddingHorizontal: 12,
-    minHeight: 140,
-    justifyContent: 'center',
+  gridContainer: {
+    width: cardWidth,
+    marginBottom: spacing.md,
+    padding: spacing.md,
   },
   header: {
     flexDirection: 'row',
-    marginBottom: 18,
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
   },
-  avatarContainer: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    marginRight: 16,
-    overflow: 'hidden',
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
+  profileSection: {
+    flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: spacing.sm,
   },
   avatarPlaceholder: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: Colors.primary,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: spacing.sm,
   },
   avatarText: {
-    color: Colors.white,
-    fontSize: 22,
-    fontFamily: 'Inter-Medium',
+    color: Colors.cardBackground,
+    fontSize: typography.fontSize.xl,
+    fontFamily: typography.fontFamily.bold,
   },
-  headerContent: {
+  nameSection: {
     flex: 1,
-    justifyContent: 'center',
   },
   name: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
+    fontSize: typography.fontSize.lg,
+    fontFamily: typography.fontFamily.semiBold,
     color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  title: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: Colors.textSecondary,
     marginBottom: 2,
   },
   company: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
     color: Colors.textSecondary,
-    marginBottom: 1,
   },
-  title: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textLight,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   favoriteButton: {
-    justifyContent: 'center',
-    padding: 4,
-    marginLeft: 8,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  contactInfo: {
-    marginBottom: 10,
-  },
-  contactItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-    backgroundColor: 'transparent',
-  },
-  contactText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
-    marginLeft: 8,
-    flex: 1,
-  },
-  clickableText: {
-    color: Colors.primary,
-    textDecorationLine: 'underline',
-  },
-  tagListRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 14,
-    marginTop: 2,
-  },
-  tagPill: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    marginRight: 7,
-    marginBottom: 4,
-  },
-  tagPillText: {
-    color: Colors.textPrimary,
-    fontSize: 13,
-    fontFamily: 'Inter-Medium',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 14,
-    gap: 4,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
-    marginHorizontal: 1,
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 1,
-    marginBottom: 2,
-  },
-  actionText: {
-    fontSize: 13,
-    fontFamily: 'Inter-SemiBold',
-    marginLeft: 7,
-    textAlign: 'center',
-  },
-  lastContactedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  lastContactedLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    marginRight: 4,
-  },
-  lastContactedDate: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textPrimary,
-    marginRight: 8,
-  },
-  reminderBadge: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  reminderText: {
-    fontSize: 10,
-    fontFamily: 'Inter-Medium',
-    color: Colors.white,
-  },
-  voiceNoteBadgeAction: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: Colors.error,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 3,
-  },
-  voiceNoteBadgeText: {
-    color: Colors.white,
-    fontSize: 10,
-    fontFamily: 'Inter-Bold',
+    padding: spacing.xs,
   },
   fileButton: {
-    justifyContent: 'center',
-    padding: 4,
-    marginLeft: 8,
+    padding: spacing.xs,
+    marginLeft: spacing.xs,
   },
   fileBadge: {
     position: 'absolute',
     top: -6,
     right: -6,
-    backgroundColor: Colors.textLight,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
   },
   fileBadgeText: {
-    color: Colors.white,
-    fontSize: 10,
-    fontFamily: 'Inter-Bold',
+    color: Colors.cardBackground,
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.bold,
+  },
+  tagsContainer: {
+    marginBottom: spacing.md,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.inputBackground,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 20,
+  },
+  actionButtonText: {
+    marginLeft: spacing.xs,
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
+    color: Colors.primary,
+  },
+  lastContactedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  lastContactedText: {
+    marginLeft: spacing.xs,
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.modalOverlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: Colors.cardBackground,
+    borderRadius: 16,
+    padding: spacing.lg,
+    width: '90%',
+    maxHeight: '80%',
+    ...shadows.large,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  modalTitle: {
+    fontSize: typography.fontSize.lg,
+    fontFamily: typography.fontFamily.semiBold,
+    color: Colors.textPrimary,
+  },
+  modalCloseButton: {
+    padding: spacing.xs,
+  },
+  fileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  fileItemText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
+    color: Colors.textPrimary,
+    marginLeft: spacing.sm,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  attachFileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+  },
+  attachFileText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.primary,
+    marginLeft: 10,
+  },
+  voiceNoteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+  },
+  voiceNoteText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.primary,
+    marginLeft: 10,
+  },
+  tabSwitcher: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    alignItems: 'center',
+  },
+  tabButtonActive: {
+    borderBottomColor: Colors.primary,
+  },
+  tabButtonText: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    fontFamily: 'Inter-Medium',
+  },
+  tabButtonTextActive: {
+    color: Colors.primary,
+    fontFamily: 'Inter-SemiBold',
+  },
+  voiceModalContainer: {
+    backgroundColor: Colors.cardBackground,
+    padding: 20,
+    borderRadius: 20,
+    width: '80%',
+    maxHeight: '80%',
+  },
+  voiceRecordControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  recordButton: {
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+  },
+  recordButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.primary,
+    marginLeft: 10,
+  },
+  cancelButton: {
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.primary,
+    marginLeft: 10,
+  },
+  saveButton: {
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+  },
+  saveButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.primary,
+    marginLeft: 10,
+  },
+  playButton: {
+    marginLeft: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: Colors.primary,
+    borderRadius: 6,
+  },
+  playButtonText: {
+    color: Colors.cardBackground,
+    fontFamily: 'Inter-Medium',
+  },
+  stopButton: {
+    marginLeft: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: Colors.error,
+    borderRadius: 6,
+  },
+  stopButtonText: {
+    color: Colors.cardBackground,
+    fontFamily: 'Inter-Medium',
+  },
+  voiceNoteDuration: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginLeft: 8,
+    marginRight: 8,
+  },
+  progressBarContainer: {
+    height: 4,
+    backgroundColor: Colors.textLight,
+    borderRadius: 2,
+    marginTop: 4,
+    width: 80,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: Colors.primary,
+    borderRadius: 2,
+  },
+  playButtonActive: {
+    backgroundColor: Colors.success,
+  },
+  voiceNoteEditInput: {
+    borderBottomWidth: 1,
+    borderColor: Colors.primary,
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textPrimary,
+    marginRight: 8,
+    minWidth: 80,
+  },
+  editIcon: {
+    marginLeft: 6,
+    marginRight: 6,
+  },
+  modalContent: {
+    backgroundColor: Colors.cardBackground,
+    borderRadius: 16,
+    padding: spacing.lg,
+    width: '90%',
+    maxHeight: '80%',
+    ...shadows.large,
+  },
+  contactInfoSection: {
+    marginBottom: spacing.md,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  contactRowText: {
+    marginLeft: spacing.sm,
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
+    color: '#2563eb',
+    textDecorationLine: 'underline',
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    marginTop: spacing.xs,
+  },
+  tagBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    padding: 4,
+    marginRight: 4,
+  },
+  tagBadgeText: {
+    color: Colors.cardBackground,
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.bold,
   },
 });
 

@@ -15,6 +15,8 @@ import Colors from '@/constants/Colors';
 import SearchFilter from '@/components/SearchFilter';
 import ProviderSearchItem from '@/components/ProviderSearchItem';
 import { Filter } from '@/types';
+import { searchProviders as googleSearchProviders } from '@/utils/googlePlaces';
+import axios from 'axios';
 
 // Google Places API configuration
 const GOOGLE_PLACES_API_KEY = 'AIzaSyDsjOqNqBY6albDBbUb_nTalGvwqeeRQ_A';
@@ -158,113 +160,61 @@ export default function FindProvidersScreen() {
 
   const buildSearchQuery = (): string => {
     let query = '';
-    
-    // Add specialties to query
+
+    // Add specialties/tags to query
     if (filter.specialty.length > 0) {
-      query += filter.specialty.join(' OR ') + ' ';
+      // For legal-related tags, append 'Attorney' and 'Lawyer'
+      const legalKeywords = ['injury', 'law', 'attorney', 'legal', 'trial', 'pi', 'malpractice', 'defense', 'estate', 'real estate', 'immigration', 'comp', 'criminal'];
+      const isLegal = filter.specialty.some(s => legalKeywords.some(k => s.toLowerCase().includes(k)));
+      if (isLegal) {
+        query += filter.specialty.join(' OR ') + ' Attorney Lawyer ';
+      } else {
+        // For medical-related tags, append 'Doctor' and 'Physician'
+        const medicalKeywords = ['doctor', 'dr', 'surgeon', 'chiropractor', 'orthopedic', 'pain', 'spine', 'medical', 'physician', 'clinic', 'hospital'];
+        const isMedical = filter.specialty.some(s => medicalKeywords.some(k => s.toLowerCase().includes(k)));
+        if (isMedical) {
+          query += filter.specialty.join(' OR ') + ' Doctor Physician ';
+        } else {
+          // For other tags, just use the tag
+          query += filter.specialty.join(' OR ') + ' ';
+        }
+      }
     }
-    
+
     // Add default professional types if no specialty selected
     if (filter.specialty.length === 0) {
       query += 'doctor attorney lawyer physician surgeon ';
     }
-    
+
     // Add location
     if (filter.location) {
       query += `in ${filter.location}`;
     }
-    
+
     return query.trim();
   };
 
-  const searchProviders = async () => {
-    if (!filter.location) {
-      Alert.alert('Location Required', 'Please enter a location to search for providers.');
+  const handleSearch = async () => {
+    if (!filter.location || filter.specialty.length === 0) {
+      Alert.alert('Please enter a location and select a specialty.');
       return;
     }
-
     setLoading(true);
-    setResults([]);
-
     try {
-      // Determine which location to use for search
-      let searchCoords: {lat: number; lng: number} | null = null;
-      
-      if (filter.location && userLocation) {
-        // Check if the search location is the same as user's current location
-        const reverseGeocode = await Location.reverseGeocodeAsync({
-          latitude: userLocation.lat,
-          longitude: userLocation.lng,
-        });
-
-        if (reverseGeocode.length > 0) {
-          const currentLocationString = `${reverseGeocode[0].city}, ${reverseGeocode[0].region}`;
-          
-          if (filter.location.toLowerCase().includes(reverseGeocode[0].city?.toLowerCase() || '')) {
-            // Use user's actual location for more accurate results
-            searchCoords = userLocation;
-          }
-        }
-      }
-      
-      // If not using user location, geocode the search location
-      if (!searchCoords) {
-        searchCoords = await getLocationCoordinates(filter.location);
-      }
-      
-      if (!searchCoords) {
-        Alert.alert('Invalid Location', 'Could not find the specified location. Please try a different location.');
-        setLoading(false);
-        return;
-      }
-
-      setSearchLocation(searchCoords);
-
-      const query = buildSearchQuery();
-      console.log('Searching for:', query);
-      console.log('Search coordinates:', searchCoords);
-
-      // Use Nearby Search API with location and radius for more accurate results
-      const radiusInMeters = filter.radius * 1609.34; // Convert miles to meters
-      
-      let searchUrl = '';
-      
-      if (filter.specialty.length > 0) {
-        // Use Text Search for specific specialties
-        searchUrl = `${PLACES_API_BASE}/textsearch/json?query=${encodeURIComponent(query)}&location=${searchCoords.lat},${searchCoords.lng}&radius=${radiusInMeters}&key=${GOOGLE_PLACES_API_KEY}`;
-      } else {
-        // Use Nearby Search for general professional services
-        searchUrl = `${PLACES_API_BASE}/nearbysearch/json?location=${searchCoords.lat},${searchCoords.lng}&radius=${radiusInMeters}&type=establishment&keyword=doctor attorney lawyer physician surgeon&key=${GOOGLE_PLACES_API_KEY}`;
-      }
-
-      const response = await fetch(searchUrl);
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.results) {
-        // Get detailed information for each place
-        const detailedResults = await Promise.all(
-          data.results.slice(0, 20).map(async (place: PlaceResult) => {
-            return await getPlaceDetails(place.place_id);
-          })
-        );
-
-        // Filter out null results and apply additional filters
-        const validResults = detailedResults
-          .filter((result): result is PlaceDetails => result !== null)
-          .filter(result => applyAdditionalFilters(result));
-
-        setResults(validResults);
-      } else {
-        console.error('Places API error:', data.status, data.error_message);
-        if (data.status === 'ZERO_RESULTS') {
-          Alert.alert('No Results', 'No providers found in this area. Try expanding your search radius or changing your location.');
-        } else {
-          Alert.alert('Search Error', data.error_message || 'Unable to search for providers. Please try again.');
-        }
-      }
+      const specialty = filter.specialty[0];
+      const city = filter.location;
+      const providers = await googleSearchProviders(specialty, city);
+      // Fetch details for each provider
+      const providersWithDetails = await Promise.all(
+        providers.map(async (provider: any) => {
+          const details = await fetchPlaceDetails(provider.place_id);
+          // Prefer details.photos if available, otherwise use provider.photos
+          return { ...provider, ...details, photos: details.photos || provider.photos };
+        })
+      );
+      setResults(providersWithDetails);
     } catch (error) {
-      console.error('Search error:', error);
-      Alert.alert('Network Error', 'Unable to connect to search service. Please check your internet connection.');
+      Alert.alert('Error', 'Failed to fetch providers.');
     } finally {
       setLoading(false);
     }
@@ -375,37 +325,12 @@ export default function FindProvidersScreen() {
           if (supported) {
             Alert.alert(
               'Call Provider',
-              `Call this provider?\n\nPhone: ${phoneNumber}`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Call', 
-                  onPress: () => Linking.openURL(phoneUrl)
-                }
-              ]
+              'Call this provider?'
             );
           } else {
-            Alert.alert('Cannot Make Call', 'Phone calling is not supported on this device.');
+            Alert.alert('Call Error', 'Unable to call this provider. Please check your internet connection.');
           }
         });
-    }
-  };
-
-  const handleWebsite = (website: string) => {
-    if (!website) {
-      Alert.alert('No Website', 'This provider does not have a website listed.');
-      return;
-    }
-
-    let websiteUrl = website;
-    if (!websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://')) {
-      websiteUrl = `https://${websiteUrl}`;
-    }
-    
-    if (Platform.OS === 'web') {
-      window.open(websiteUrl, '_blank');
-    } else {
-      Linking.openURL(websiteUrl);
     }
   };
 
@@ -414,13 +339,11 @@ export default function FindProvidersScreen() {
       await requestLocationPermission();
       return;
     }
-
     try {
       const reverseGeocode = await Location.reverseGeocodeAsync({
         latitude: userLocation.lat,
         longitude: userLocation.lng,
       });
-
       if (reverseGeocode.length > 0) {
         const address = reverseGeocode[0];
         const locationString = `${address.city}, ${address.region}`;
@@ -432,17 +355,51 @@ export default function FindProvidersScreen() {
     }
   };
 
+  const handleWebsite = (website: string) => {
+    if (!website) {
+      Alert.alert('No Website', 'This provider does not have a website listed.');
+      return;
+    }
+    let websiteUrl = website;
+    if (!websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://')) {
+      websiteUrl = `https://${websiteUrl}`;
+    }
+    if (Platform.OS === 'web') {
+      window.open(websiteUrl, '_blank');
+    } else {
+      Linking.openURL(websiteUrl);
+    }
+  };
+
+  // Fetch Place Details for phone number and website
+  const fetchPlaceDetails = async (placeId: string) => {
+    try {
+      const detailsUrl = `${PLACES_API_BASE}/details/json?place_id=${placeId}&fields=place_id,formatted_phone_number,website,photos,user_ratings_total&key=${GOOGLE_PLACES_API_KEY}`;
+      const res = await axios.get(detailsUrl);
+      if (res.data.status === 'OK' && res.data.result) {
+        return {
+          formatted_phone_number: res.data.result.formatted_phone_number,
+          website: res.data.result.website,
+          photos: res.data.result.photos,
+          user_ratings_total: res.data.result.user_ratings_total,
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching place details:', error);
+    }
+    return {};
+  };
+
   return (
     <View style={styles.container}>
       <SearchFilter
         filter={filter}
         onUpdateFilter={updateFilter}
-        onSearch={searchProviders}
+        onSearch={handleSearch}
         onReset={resetFilter}
         onUseMyLocation={handleUseMyLocation}
         hasLocationPermission={!!userLocation}
       />
-      
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -466,7 +423,6 @@ export default function FindProvidersScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <MapPin size={48} color={Colors.textLight} />
               <Text style={styles.emptyText}>
                 {filter.location || filter.specialty.length > 0 
                   ? 'No providers found' 
@@ -479,22 +435,6 @@ export default function FindProvidersScreen() {
                 }
               </Text>
             </View>
-          }
-          ListHeaderComponent={
-            results.length > 0 ? (
-              <View style={styles.resultsHeader}>
-                <Text style={styles.resultsText}>
-                  Found {results.length} provider{results.length !== 1 ? 's' : ''}
-                  {filter.location && ` near ${filter.location}`}
-                </Text>
-                {userLocation && (
-                  <View style={styles.locationStatus}>
-                    <LocationIcon size={14} color={Colors.success} />
-                    <Text style={styles.locationStatusText}>Using your location for accurate distances</Text>
-                  </View>
-                )}
-              </View>
-            ) : null
           }
         />
       )}
@@ -526,29 +466,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
     textAlign: 'center',
-  },
-  resultsHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  resultsText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textSecondary,
-  },
-  locationStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  locationStatusText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: Colors.success,
-    marginLeft: 4,
   },
   emptyContainer: {
     flex: 1,

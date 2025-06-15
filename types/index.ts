@@ -1,26 +1,41 @@
 export interface BusinessCard {
   id: string;
   name: string;
-  company: string;
-  title: string;
-  phone: string;
-  email: string;
-  address: string;
-  website?: string;
-  specialty: string[];
-  languages: string[];
+  title?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  phones?: string[];
+  address?: string;
+  addresses?: string[];
+  city?: string;
+  state?: string;
+  zip?: string;
+  latitude?: number;
+  longitude?: number;
   tags: string[];
   notes?: string;
-  image?: string;
-  profileImage?: string; // New field for profile pictures
-  cardImage?: string; // New field for business card photos
-  lastContacted?: Date;
-  reminder?: boolean;
-  favorited: boolean;
-  voiceNotes?: VoiceNote[];
-  createdAt: Date;
-  updatedAt: Date;
-  files?: { name: string; url: string }[];
+  profileImage?: string;
+  cardImage?: string;
+  favorited?: boolean;
+  files?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    url: string;
+    createdAt: string;
+  }>;
+  voiceNotes?: Array<{
+    id: string;
+    url: string;
+    duration: number;
+    createdAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+  specialty?: string;
+  languages?: string[];
+  website?: string;
 }
 
 export interface VoiceNote {
@@ -29,6 +44,7 @@ export interface VoiceNote {
   recording: string;
   duration: number;
   createdAt: Date;
+  name?: string;
 }
 
 export interface Referral {

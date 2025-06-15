@@ -11,7 +11,7 @@ export default function DashboardScreen() {
   const { cards, getCardById, updateLastContacted } = useCardStore();
   
   const topReferrers = getTopReferrers(3);
-  const topRecipients = getTopRecipients(3);
+  const topRecipients = (getTopRecipients(3) || []).slice(0, 3);
   const totalValue = getTotalReferralsValue();
   
   // Get cards that need follow-up (haven't been contacted in 30+ days)

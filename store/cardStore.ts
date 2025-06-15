@@ -44,28 +44,19 @@ export const useCardStore = create<CardState>((set, get) => ({
           isLoaded: true,
         });
       } else {
-        // First time loading - use mock data and save it
-        const cardsWithDates = mockCards.map(card => ({
-          ...card,
-          createdAt: new Date(card.createdAt),
-          updatedAt: new Date(card.updatedAt),
-          lastContacted: card.lastContacted ? new Date(card.lastContacted) : undefined,
-        }));
-        
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cardsWithDates));
-        
+        // First time loading - start with empty list
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([]));
         set({
-          cards: cardsWithDates,
-          favorites: cardsWithDates.filter(card => card.favorited),
+          cards: [],
+          favorites: [],
           isLoaded: true,
         });
       }
     } catch (error) {
       console.error('Error loading cards from storage:', error);
-      // Fallback to mock data if storage fails
       set({
-        cards: mockCards,
-        favorites: mockCards.filter(card => card.favorited),
+        cards: [],
+        favorites: [],
         isLoaded: true,
       });
     }
@@ -80,12 +71,17 @@ export const useCardStore = create<CardState>((set, get) => ({
   },
   
   addCard: (card) => {
+    console.log('addCard called with:', card);
     const newCards = [card, ...get().cards];
     set({
       cards: newCards,
       favorites: card.favorited ? [card, ...get().favorites] : get().favorites
     });
     get().saveCards(newCards);
+    // Debug: log current cards in storage
+    AsyncStorage.getItem('@cardlink_business_cards').then(data => {
+      console.log('Current cards in storage:', data);
+    });
   },
   
   updateCard: (updatedCard) => {

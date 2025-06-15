@@ -15,8 +15,8 @@ const TagList: React.FC<TagListProps> = ({
   maxTags = 3,
   onPress
 }) => {
-  const displayTags = tags.slice(0, maxTags);
-  const hasMore = tags.length > maxTags;
+  const displayTags = (tags || []).slice(0, maxTags);
+  const hasMore = (tags || []).length > maxTags;
   
   return (
     <View style={[styles.container, style]}>
@@ -33,7 +33,7 @@ const TagList: React.FC<TagListProps> = ({
       
       {hasMore && (
         <View style={styles.tag}>
-          <Text style={styles.tagText}>+{tags.length - maxTags} more</Text>
+          <Text style={styles.tagText}>+{(tags || []).length - maxTags} more</Text>
         </View>
       )}
     </View>

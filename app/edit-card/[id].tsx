@@ -19,20 +19,36 @@ import { useCardStore } from '@/store/cardStore';
 import { BusinessCard } from '@/types';
 import ImagePicker from '@/components/ImagePicker';
 
+interface FormData {
+  name: string;
+  company?: string;
+  title?: string;
+  phones: string[];
+  email: string;
+  addresses: string[];
+  website?: string;
+  specialty: string;
+  languages: string[];
+  tags: string[];
+  notes: string;
+  profileImage: string;
+  cardImage: string;
+}
+
 export default function EditCardScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { getCardById, updateCard, deleteCard } = useCardStore();
   
-  const [formData, setFormData] = useState<Partial<BusinessCard>>({
+  const [formData, setFormData] = useState<FormData>({
     name: '',
     company: '',
     title: '',
-    phone: '',
+    phones: ['', '', ''],
     email: '',
-    address: '',
+    addresses: ['', ''],
     website: '',
-    specialty: [],
+    specialty: '',
     languages: [],
     tags: [],
     notes: '',
@@ -40,20 +56,28 @@ export default function EditCardScreen() {
     cardImage: '',
   });
   
-  const [showSpecialty, setShowSpecialty] = useState(false);
-  const [showLanguages, setShowLanguages] = useState(false);
-  const [showTags, setShowTags] = useState(false);
-  
-  // Search states for filtering options
-  const [specialtySearch, setSpecialtySearch] = useState('');
-  const [languageSearch, setLanguageSearch] = useState('');
-  const [tagSearch, setTagSearch] = useState('');
+  const [showModal, setShowModal] = useState<'specialty' | 'language' | 'tag' | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   useEffect(() => {
     if (id) {
       const card = getCardById(id as string);
       if (card) {
-        setFormData(card);
+        setFormData({
+          name: card.name || '',
+          company: card.company || '',
+          title: card.title || '',
+          phones: card.phones || ['', '', ''],
+          email: card.email || '',
+          addresses: card.addresses || ['', ''],
+          website: card.website || '',
+          specialty: card.specialty || '',
+          languages: card.languages || [],
+          tags: card.tags || [],
+          notes: card.notes || '',
+          profileImage: card.profileImage || '',
+          cardImage: card.cardImage || '',
+        });
       } else {
         Alert.alert('Error', 'Card not found', [
           { text: 'OK', onPress: () => router.back() }
@@ -62,45 +86,76 @@ export default function EditCardScreen() {
     }
   }, [id]);
   
-  const toggleSelection = (type: 'specialty' | 'languages' | 'tags', value: string) => {
-    const currentValues = formData[type] as string[] || [];
-    if (currentValues.includes(value)) {
-      setFormData({
-        ...formData,
-        [type]: currentValues.filter(item => item !== value)
-      });
+  const toggleSelection = (type: 'specialty' | 'language' | 'tag', value: string) => {
+    if (type === 'specialty') {
+      setFormData(prev => ({
+        ...prev,
+        specialty: value
+      }));
     } else {
-      setFormData({
+      const currentValues = type === 'language' ? formData.languages : formData.tags;
+      if (currentValues.includes(value)) {
+        setFormData(prev => ({
+          ...prev,
+          [type]: currentValues.filter(item => item !== value)
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [type]: [...currentValues, value]
+        }));
+      }
+    }
+  };
+  
+  const handleInputChange = (field: keyof FormData, value: string | string[], index?: number) => {
+    if (field === 'phones' || field === 'addresses') {
+      const newArray = [...formData[field]];
+      if (typeof index === 'number') {
+        newArray[index] = value as string;
+      }
+      setFormData(prev => ({
+        ...prev,
+        [field]: newArray
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+  };
+  
+  const handleSaveCard = async () => {
+    try {
+      const card = getCardById(id as string);
+      if (!card) {
+        Alert.alert('Error', 'Card not found');
+        return;
+      }
+
+      const updatedCard: BusinessCard = {
+        ...card,
         ...formData,
-        [type]: [...currentValues, value]
-      });
+        id: card.id,
+        phones: formData.phones || [],
+        addresses: formData.addresses || [],
+        tags: formData.tags || [],
+        languages: formData.languages || [],
+        specialty: formData.specialty || '',
+        notes: formData.notes || '',
+        profileImage: formData.profileImage || '',
+        cardImage: formData.cardImage || '',
+        updatedAt: new Date().toISOString(),
+        createdAt: card.createdAt
+      };
+
+      await updateCard(updatedCard);
+      router.back();
+    } catch (error) {
+      console.error('Error saving card:', error);
+      Alert.alert('Error', 'Failed to save card. Please try again.');
     }
-  };
-  
-  const handleInputChange = (field: string, value: string) => {
-    setFormData({
-      ...formData,
-      [field]: value
-    });
-  };
-  
-  const handleSaveCard = () => {
-    if (!formData.name || !formData.phone || !formData.email) {
-      Alert.alert('Missing Information', 'Please fill in at least name, phone, and email.');
-      return;
-    }
-    
-    const updatedCard: BusinessCard = {
-      ...formData as BusinessCard,
-      id: id as string,
-      updatedAt: new Date(),
-    };
-    
-    updateCard(updatedCard);
-    
-    Alert.alert('Success', 'Contact updated successfully!', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
   };
   
   const handleDeleteCard = () => {
@@ -123,104 +178,95 @@ export default function EditCardScreen() {
     );
   };
   
-  // Filter functions
-  const getFilteredSpecialties = () => {
-    return specialtyOptions.filter(specialty =>
-      specialty.toLowerCase().includes(specialtySearch.toLowerCase())
-    );
-  };
-  
-  const getFilteredLanguages = () => {
-    return languageOptions.filter(language =>
-      language.toLowerCase().includes(languageSearch.toLowerCase())
-    );
-  };
-  
-  const getFilteredTags = () => {
-    return tagOptions.filter(tag =>
-      tag.toLowerCase().includes(tagSearch.toLowerCase())
-    );
-  };
+  const renderDropdownModal = (type: 'specialty' | 'language' | 'tag') => {
+    const title = type === 'specialty' ? 'Select Specialty' : type === 'language' ? 'Select Languages' : 'Select Tags';
+    const options = type === 'specialty' ? specialtyOptions : type === 'language' ? languageOptions : tagOptions;
+    const selectedValues = type === 'specialty' ? [formData.specialty].filter(Boolean) : type === 'language' ? formData.languages : formData.tags;
+    const isMultiSelect = type !== 'specialty';
 
-  const renderDropdownModal = (
-    visible: boolean,
-    title: string,
-    searchValue: string,
-    onSearchChange: (text: string) => void,
-    options: string[],
-    selectedValues: string[],
-    onToggle: (value: string) => void,
-    onClose: () => void
-  ) => (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
-              <X size={24} color={Colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.modalSearchContainer}>
-            <Search size={20} color={Colors.textSecondary} />
-            <TextInput
-              style={styles.modalSearchInput}
-              placeholder={`Search ${title.toLowerCase()}...`}
-              placeholderTextColor={Colors.textLight}
-              value={searchValue}
-              onChangeText={onSearchChange}
-            />
-          </View>
-          
-          <ScrollView style={styles.modalOptionsList} showsVerticalScrollIndicator={true}>
-            {options.map((option, index) => (
+    return (
+      <Modal
+        visible={showModal === type}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setShowModal(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowModal(null)}
+          />
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{title}</Text>
               <TouchableOpacity
-                key={index}
-                style={[
-                  styles.modalOptionItem,
-                  selectedValues.includes(option) && styles.modalOptionItemSelected
-                ]}
-                onPress={() => onToggle(option)}
-              >
-                <Text style={[
-                  styles.modalOptionText,
-                  selectedValues.includes(option) && styles.modalOptionTextSelected
-                ]}>
-                  {option}
-                </Text>
-                {selectedValues.includes(option) && (
-                  <View style={styles.checkmark}>
-                    <Text style={styles.checkmarkText}>✓</Text>
-                  </View>
-                )}
+                style={styles.modalCloseButton}
+                onPress={() => setShowModal(null)}>
+                <X size={24} color={Colors.textPrimary} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-          
-          <View style={styles.modalFooter}>
-            <Text style={styles.selectedCount}>
-              {selectedValues.length} selected
-            </Text>
-            <TouchableOpacity onPress={onClose} style={styles.doneButton}>
-              <Text style={styles.doneButtonText}>Done</Text>
-            </TouchableOpacity>
+            </View>
+            <View style={styles.modalSearchContainer}>
+              <Search size={20} color={Colors.textSecondary} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search..."
+                placeholderTextColor={Colors.textLight}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            <ScrollView
+              style={styles.modalOptionsList}
+              keyboardShouldPersistTaps="handled">
+              {options.filter(option =>
+                option.toLowerCase().includes(searchQuery.toLowerCase())
+              ).map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.modalOptionItem,
+                    selectedValues?.includes(option) && styles.modalOptionItemSelected,
+                  ]}
+                  onPress={() => toggleSelection(type, option)}>
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      selectedValues?.includes(option) && styles.modalOptionTextSelected,
+                    ]}>
+                    {option}
+                  </Text>
+                  {selectedValues?.includes(option) && (
+                    <View style={styles.checkmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalFooter}>
+              {isMultiSelect && (
+                <Text style={styles.selectedCount}>
+                  {selectedValues?.length || 0} selected
+                </Text>
+              )}
+              <TouchableOpacity
+                style={styles.doneButton}
+                onPress={() => setShowModal(null)}>
+                <Text style={styles.doneButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
   
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={100}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
@@ -232,7 +278,11 @@ export default function EditCardScreen() {
         </TouchableOpacity>
       </View>
       
-      <ScrollView style={styles.formContainer}>
+      <ScrollView 
+        style={styles.formContainer}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.formContentContainer}
+      >
         {/* Profile Picture Section */}
         <View style={styles.imageSection}>
           <ImagePicker
@@ -254,6 +304,7 @@ export default function EditCardScreen() {
             title="Business Card Photo"
             placeholder="Take a photo of the business card"
             aspectRatio={[16, 10]}
+            openCameraOnPress={true}
           />
         </View>
         
@@ -291,12 +342,34 @@ export default function EditCardScreen() {
         </View>
         
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone *</Text>
+          <Text style={styles.label}>Phone 1 *</Text>
           <TextInput
             style={styles.input}
-            value={formData.phone}
-            onChangeText={(text) => handleInputChange('phone', text)}
+            value={formData.phones?.[0] || ''}
+            onChangeText={(text) => handleInputChange('phones', text, 0)}
             placeholder="Enter phone number"
+            placeholderTextColor={Colors.textLight}
+            keyboardType="phone-pad"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Phone 2</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.phones?.[1] || ''}
+            onChangeText={(text) => handleInputChange('phones', text, 1)}
+            placeholder="Enter phone number (optional)"
+            placeholderTextColor={Colors.textLight}
+            keyboardType="phone-pad"
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Phone 3</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.phones?.[2] || ''}
+            onChangeText={(text) => handleInputChange('phones', text, 2)}
+            placeholder="Enter phone number (optional)"
             placeholderTextColor={Colors.textLight}
             keyboardType="phone-pad"
           />
@@ -316,12 +389,22 @@ export default function EditCardScreen() {
         </View>
         
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Address</Text>
+          <Text style={styles.label}>Address 1</Text>
           <TextInput
             style={styles.input}
-            value={formData.address}
-            onChangeText={(text) => handleInputChange('address', text)}
+            value={formData.addresses?.[0] || ''}
+            onChangeText={(text) => handleInputChange('addresses', text, 0)}
             placeholder="Enter address"
+            placeholderTextColor={Colors.textLight}
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Address 2</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.addresses?.[1] || ''}
+            onChangeText={(text) => handleInputChange('addresses', text, 1)}
+            placeholder="Enter address (optional)"
             placeholderTextColor={Colors.textLight}
           />
         </View>
@@ -342,107 +425,40 @@ export default function EditCardScreen() {
           <Text style={styles.label}>Specialty</Text>
           <TouchableOpacity
             style={styles.dropdownButton}
-            onPress={() => setShowSpecialty(true)}
-          >
+            onPress={() => setShowModal('specialty')}>
             <Text style={styles.dropdownButtonText}>
-              {(formData.specialty?.length || 0) > 0 
-                ? `${formData.specialty?.length} selected` 
-                : 'Select specialties'}
+              {formData.specialty ? formData.specialty : 'Select specialty'}
             </Text>
             <ChevronDown size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-          
-          {(formData.specialty?.length || 0) > 0 && (
-            <View style={styles.selectedItemsContainer}>
-              {formData.specialty?.map((item, index) => (
-                <View key={index} style={styles.selectedItem}>
-                  <Text style={styles.selectedItemText}>{item}</Text>
-                  <TouchableOpacity
-                    onPress={() => toggleSelection('specialty', item)}
-                    style={styles.removeButton}
-                  >
-                    <X size={14} color={Colors.white} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
         
         <View style={styles.dropdownGroup}>
           <Text style={styles.label}>Languages</Text>
           <TouchableOpacity
             style={styles.dropdownButton}
-            onPress={() => setShowLanguages(true)}
-          >
+            onPress={() => setShowModal('language')}>
             <Text style={styles.dropdownButtonText}>
-              {(formData.languages?.length || 0) > 0 
-                ? `${formData.languages?.length} selected` 
+              {formData.languages?.length > 0 
+                ? `${formData.languages.length} selected` 
                 : 'Select languages'}
             </Text>
             <ChevronDown size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-          
-          {(formData.languages?.length || 0) > 0 && (
-            <View style={styles.selectedItemsContainer}>
-              {formData.languages?.map((item, index) => (
-                <View key={index} style={styles.selectedItem}>
-                  <Text style={styles.selectedItemText}>{item}</Text>
-                  <TouchableOpacity
-                    onPress={() => toggleSelection('languages', item)}
-                    style={styles.removeButton}
-                  >
-                    <X size={14} color={Colors.white} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
         
         <View style={styles.dropdownGroup}>
           <Text style={styles.label}>Tags</Text>
           <TouchableOpacity
             style={styles.dropdownButton}
-            onPress={() => setShowTags(true)}
-          >
+            onPress={() => setShowModal('tag')}>
             <Text style={styles.dropdownButtonText}>
-              {(formData.tags?.length || 0) > 0 
-                ? `${formData.tags?.length} selected` 
+              {formData.tags?.length > 0 
+                ? `${formData.tags.length} selected` 
                 : 'Select tags'}
             </Text>
             <ChevronDown size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-          
-          {(formData.tags?.length || 0) > 0 && (
-            <View style={styles.selectedItemsContainer}>
-              {formData.tags?.map((item, index) => (
-                <View key={index} style={styles.selectedItem}>
-                  <Text style={styles.selectedItemText}>{item}</Text>
-                  <TouchableOpacity
-                    onPress={() => toggleSelection('tags', item)}
-                    style={styles.removeButton}
-                  >
-                    <X size={14} color={Colors.white} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={formData.notes}
-            onChangeText={(text) => handleInputChange('notes', text)}
-            placeholder="Add notes about this contact"
-            placeholderTextColor={Colors.textLight}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
         </View>
         
         <View style={styles.submitButtonContainer}>
@@ -457,10 +473,10 @@ export default function EditCardScreen() {
           <TouchableOpacity
             style={[
               styles.saveButton,
-              (!formData.name || !formData.phone || !formData.email) && styles.saveButtonDisabled
+              (!formData.name || !formData.email || !formData.phones || !formData.phones[0]) && styles.saveButtonDisabled
             ]}
             onPress={handleSaveCard}
-            disabled={!formData.name || !formData.phone || !formData.email}
+            disabled={!formData.name || !formData.email || !formData.phones || !formData.phones[0]}
           >
             <Save size={20} color={Colors.white} />
             <Text style={styles.saveButtonText}>Save Changes</Text>
@@ -468,50 +484,9 @@ export default function EditCardScreen() {
         </View>
       </ScrollView>
 
-      {/* Specialty Modal */}
-      {renderDropdownModal(
-        showSpecialty,
-        'Select Specialties',
-        specialtySearch,
-        setSpecialtySearch,
-        getFilteredSpecialties(),
-        formData.specialty || [],
-        (value) => toggleSelection('specialty', value),
-        () => {
-          setShowSpecialty(false);
-          setSpecialtySearch('');
-        }
-      )}
-
-      {/* Languages Modal */}
-      {renderDropdownModal(
-        showLanguages,
-        'Select Languages',
-        languageSearch,
-        setLanguageSearch,
-        getFilteredLanguages(),
-        formData.languages || [],
-        (value) => toggleSelection('languages', value),
-        () => {
-          setShowLanguages(false);
-          setLanguageSearch('');
-        }
-      )}
-
-      {/* Tags Modal */}
-      {renderDropdownModal(
-        showTags,
-        'Select Tags',
-        tagSearch,
-        setTagSearch,
-        getFilteredTags(),
-        formData.tags || [],
-        (value) => toggleSelection('tags', value),
-        () => {
-          setShowTags(false);
-          setTagSearch('');
-        }
-      )}
+      {renderDropdownModal('specialty')}
+      {renderDropdownModal('language')}
+      {renderDropdownModal('tag')}
     </KeyboardAvoidingView>
   );
 }
@@ -560,9 +535,6 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 16,
   },
-  dropdownGroup: {
-    marginBottom: 16,
-  },
   label: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
@@ -583,50 +555,6 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
-  },
-  dropdownButton: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
-  },
-  selectedItemsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-    gap: 8,
-  },
-  selectedItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  selectedItemText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    color: Colors.white,
-    marginRight: 6,
-  },
-  removeButton: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   submitButtonContainer: {
     flexDirection: 'row',
@@ -671,18 +599,32 @@ const styles = StyleSheet.create({
     color: Colors.white,
     marginLeft: 8,
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'flex-end',
   },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   modalContainer: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '80%',
     minHeight: '60%',
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  formContentContainer: {
+    paddingBottom: 100,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -756,7 +698,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkmarkText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
   },
@@ -783,5 +725,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     color: Colors.white,
+  },
+  dropdownGroup: {
+    marginBottom: 16,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flex: 1,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    marginRight: 8,
   },
 });

@@ -1,28 +1,38 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal } from 'react-native';
-import { Search, X, Settings, Star, FileText } from 'lucide-react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, StatusBar, SafeAreaView, Alert } from 'react-native';
+import { Search, X, Settings, Star, FileText, Mic } from 'lucide-react-native';
 import { useCardStore } from '@/store/cardStore';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import BusinessCardItem from '@/components/BusinessCardItem';
 import { tagOptions } from '@/data/mockData';
+import { SafeAreaView as SafeAreaViewRN } from 'react-native-safe-area-context';
+import { filterProviders } from '@/utils/locationUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function MyCardsScreen() {
   const router = useRouter();
   const { cards, toggleFavorite, favorites } = useCardStore();
+  console.log('MyCardsScreen cards from store:', cards);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showTagModal, setShowTagModal] = useState(false);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
+  const [showFilesModal, setShowFilesModal] = useState(false);
+  const [globalFilesTab, setGlobalFilesTab] = useState<'files' | 'voice'>('files');
   const [tagSearch, setTagSearch] = useState('');
+  const [selectedCity, setSelectedCity] = useState<string>('Orlando'); // Default city
 
   // Sort cards by creation date (newest first) to show scanned cards at the top
   const sortedCards = [...cards].sort((a, b) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const filteredCards = selectedTag
-    ? sortedCards.filter(card => card.tags.includes(selectedTag))
-    : sortedCards;
+  // Get filtered tags based on search
+  const getFilteredTags = () => {
+    return tagOptions.filter(tag =>
+      tag.toLowerCase().includes(tagSearch.toLowerCase())
+    );
+  };
 
   const handleCardPress = (id: string) => {
     router.push(`/contact-details/${id}`);
@@ -52,22 +62,14 @@ export default function MyCardsScreen() {
     setTagSearch('');
   };
 
-  // Get filtered tags based on search
-  const getFilteredTags = () => {
-    return tagOptions.filter(tag =>
-      tag.toLowerCase().includes(tagSearch.toLowerCase())
-    );
-  };
-
   // Get popular tags from existing cards
   const getPopularTags = () => {
     const tagCounts: Record<string, number> = {};
     cards.forEach(card => {
-      card.tags.forEach(tag => {
+      (card.tags || []).forEach(tag => {
         tagCounts[tag] = (tagCounts[tag] || 0) + 1;
       });
     });
-    
     return Object.entries(tagCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
@@ -77,274 +79,363 @@ export default function MyCardsScreen() {
   const popularTags = getPopularTags();
 
   return (
-    <View style={styles.container}>
-      {/* Header with Settings and Favorites Buttons */}
-      <View style={styles.headerContainer}>
-        <View style={styles.headerContent}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>My Cards</Text>
-            <Text style={styles.headerSubtitle}>
-              {filteredCards.length} contact{filteredCards.length !== 1 ? 's' : ''}
-              {selectedTag && ` with "${selectedTag}"`}
-            </Text>
-          </View>
-          
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => setShowFavoritesModal(true)}
-            >
-              <Star size={20} color={Colors.favorite} fill={Colors.favorite} />
-              {favorites.length > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{favorites.length}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            {/* File icon with total file count */}
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => {}}
-            >
-              <FileText size={20} color={Colors.textSecondary} />
-              {cards && cards.reduce((sum, card) => sum + (card.files ? card.files.length : 0), 0) > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{cards.reduce((sum, card) => sum + (card.files ? card.files.length : 0), 0)}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => router.push('/(tabs)/settings')}
-            >
-              <Settings size={20} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {/* Action Buttons */}
-      <View style={styles.actionContainerRow}>
-        <TouchableOpacity
-          onPress={() => router.push('/scan')}
-          style={styles.scanButton}
-        >
-          <Text style={styles.scanButtonText}>Scan New Card</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.tagFilterButton}
-          onPress={() => setShowTagModal(true)}
-        >
-          <Search size={16} color={Colors.primary} />
-          <Text style={styles.tagFilterButtonText}>
-            {selectedTag ? `Tag: ${selectedTag}` : 'Filter by Tag'}
-          </Text>
-          {selectedTag && (
-            <TouchableOpacity
-              onPress={clearTagFilter}
-              style={styles.clearTagButton}
-            >
-              <X size={14} color={Colors.error} />
-            </TouchableOpacity>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={filteredCards}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <BusinessCardItem
-            card={item}
-            onPress={handleCardPress}
-            onToggleFavorite={toggleFavorite}
-            onEdit={handleEdit}
-            onAddVoiceNote={handleAddVoiceNote}
-            onLogReferral={handleLogReferral}
-          />
-        )}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No business cards found</Text>
-            <Text style={styles.emptySubtext}>
-              {selectedTag 
-                ? `No cards found with tag "${selectedTag}". Try a different tag or clear the filter.`
-                : 'Add new cards by scanning business cards or creating them manually'
-              }
-            </Text>
-          </View>
-        }
-      />
-
-      {/* Favorites Modal */}
-      <Modal
-        visible={showFavoritesModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowFavoritesModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Favorite Contacts</Text>
-              <TouchableOpacity 
-                onPress={() => setShowFavoritesModal(false)} 
-                style={styles.modalCloseButton}
-              >
-                <X size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+        <View style={styles.headerContainer}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.headerTitle}>My Cards</Text>
+              <Text style={styles.headerSubtitle}>
+                {sortedCards.length} {sortedCards.length === 1 ? 'card' : 'cards'}
+              </Text>
             </View>
             
-            <FlatList
-              data={favorites}
-              keyExtractor={(item) => item.id}
-              style={styles.favoritesList}
-              renderItem={({ item }) => (
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={() => setShowFavoritesModal(true)}
+              >
+                <Star size={20} color={Colors.favorite} fill={Colors.favorite} />
+                {cards.length > 0 && favorites.length > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{favorites.length}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {/* File icon with total file count */}
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={() => setShowFilesModal(true)}
+              >
+                <FileText size={20} color={Colors.textSecondary} />
+                {cards && cards.reduce((sum, card) => sum + (card.files ? card.files.length : 0), 0) > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{cards.reduce((sum, card) => sum + (card.files ? card.files.length : 0), 0)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {/* Debug: Clear all cards button (only in dev) */}
+              {__DEV__ && (
                 <TouchableOpacity
-                  style={styles.favoriteItem}
-                  onPress={() => {
-                    setShowFavoritesModal(false);
-                    handleCardPress(item.id);
+                  style={styles.headerButton}
+                  onPress={async () => {
+                    await AsyncStorage.removeItem('@cardlink_business_cards');
+                    Alert.alert('Storage Cleared', 'All cards have been removed. Restart the app to see changes.');
                   }}
                 >
-                  <View style={styles.favoriteAvatar}>
-                    <Text style={styles.favoriteAvatarText}>
-                      {item.name.charAt(0)}
+                  <Text style={{ color: Colors.error, fontWeight: 'bold', fontSize: 18 }}>🗑️</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={() => router.push('/(tabs)/settings')}
+              >
+                <Settings size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionContainerRow}>
+          <TouchableOpacity
+            onPress={() => router.push('/scan')}
+            style={styles.scanButton}
+          >
+            <Text style={styles.scanButtonText}>Scan New Card</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tagFilterButton}
+            onPress={() => setShowTagModal(true)}
+          >
+            <Search size={16} color={Colors.primary} />
+            <Text style={styles.tagFilterButtonText}>
+              {selectedTag ? `Tag: ${selectedTag}` : 'Filter by Tag'}
+            </Text>
+            {selectedTag && (
+              <TouchableOpacity
+                onPress={clearTagFilter}
+                style={styles.clearTagButton}
+              >
+                <X size={14} color={Colors.error} />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          data={sortedCards}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <BusinessCardItem
+              card={item}
+              onPress={handleCardPress}
+              onToggleFavorite={toggleFavorite}
+              onEdit={handleEdit}
+              onAddVoiceNote={handleAddVoiceNote}
+            />
+          )}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No business cards found</Text>
+              <Text style={styles.emptySubtext}>
+                Add new cards by scanning business cards or creating them manually.
+              </Text>
+            </View>
+          }
+        />
+
+        {/* Favorites Modal */}
+        <Modal
+          visible={showFavoritesModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowFavoritesModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Favorite Contacts</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowFavoritesModal(false)} 
+                  style={styles.modalCloseButton}
+                >
+                  <X size={24} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+              
+              <FlatList
+                data={favorites}
+                keyExtractor={(item) => item.id}
+                style={styles.favoritesList}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.favoriteItem}
+                    onPress={() => {
+                      setShowFavoritesModal(false);
+                      handleCardPress(item.id);
+                    }}
+                  >
+                    <View style={styles.favoriteAvatar}>
+                      <Text style={styles.favoriteAvatarText}>
+                        {item.name.charAt(0)}
+                      </Text>
+                    </View>
+                    <View style={styles.favoriteInfo}>
+                      <Text style={styles.favoriteName}>{item.name}</Text>
+                      <Text style={styles.favoriteCompany}>{item.company}</Text>
+                    </View>
+                    <Star size={20} color={Colors.favorite} fill={Colors.favorite} />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyFavoritesContainer}>
+                    <Star size={48} color={Colors.textLight} />
+                    <Text style={styles.emptyFavoritesText}>No favorites yet</Text>
+                    <Text style={styles.emptyFavoritesSubtext}>
+                      Tap the star on any contact to add them to favorites
                     </Text>
                   </View>
-                  <View style={styles.favoriteInfo}>
-                    <Text style={styles.favoriteName}>{item.name}</Text>
-                    <Text style={styles.favoriteCompany}>{item.company}</Text>
-                  </View>
-                  <Star size={20} color={Colors.favorite} fill={Colors.favorite} />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View style={styles.emptyFavoritesContainer}>
-                  <Star size={48} color={Colors.textLight} />
-                  <Text style={styles.emptyFavoritesText}>No favorites yet</Text>
-                  <Text style={styles.emptyFavoritesSubtext}>
-                    Tap the star on any contact to add them to favorites
-                  </Text>
-                </View>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* Tag Search Modal */}
-      <Modal
-        visible={showTagModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowTagModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Filter by Tag</Text>
-              <TouchableOpacity 
-                onPress={() => {
-                  setShowTagModal(false);
-                  setTagSearch('');
-                }} 
-                style={styles.modalCloseButton}
-              >
-                <X size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.modalSearchContainer}>
-              <Search size={20} color={Colors.textSecondary} />
-              <TextInput
-                style={styles.modalSearchInput}
-                placeholder="Type to search tags..."
-                placeholderTextColor={Colors.textLight}
-                value={tagSearch}
-                onChangeText={setTagSearch}
-                autoFocus={true}
+                }
               />
-              {tagSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setTagSearch('')}>
-                  <X size={20} color={Colors.textSecondary} />
-                </TouchableOpacity>
-              )}
             </View>
-            
-            <FlatList
-              data={getFilteredTags()}
-              keyExtractor={(item) => item}
-              style={styles.modalTagsList}
-              renderItem={({ item }) => (
+          </View>
+        </Modal>
+
+        {/* Tag Search Modal */}
+        <Modal
+          visible={showTagModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowTagModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+            >
+              <SafeAreaView style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Filter by Tag</Text>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setShowTagModal(false);
+                      setTagSearch('');
+                    }} 
+                    style={styles.modalCloseButton}
+                  >
+                    <X size={24} color={Colors.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.modalSearchContainer}>
+                  <Search size={20} color={Colors.textSecondary} />
+                  <TextInput
+                    style={styles.modalSearchInput}
+                    placeholder="Type to search tags..."
+                    placeholderTextColor={Colors.textLight}
+                    value={tagSearch}
+                    onChangeText={setTagSearch}
+                    autoFocus={true}
+                  />
+                  {tagSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setTagSearch('')}>
+                      <X size={20} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                
+                <FlatList
+                  data={getFilteredTags()}
+                  keyExtractor={(item) => item}
+                  style={styles.modalTagsList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[
+                        styles.modalTagItem,
+                        selectedTag === item && styles.modalTagItemSelected
+                      ]}
+                      onPress={() => toggleTagFilter(item)}
+                    >
+                      <Text style={[
+                        styles.modalTagText,
+                        selectedTag === item && styles.modalTagTextSelected
+                      ]}>
+                        {item}
+                      </Text>
+                      {selectedTag === item && (
+                        <View style={styles.checkmark}>
+                          <Text style={styles.checkmarkText}>✓</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.noResultsContainer}>
+                      <Text style={styles.noResultsText}>
+                        No tags found matching "{tagSearch}"
+                      </Text>
+                    </View>
+                  }
+                />
+                
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity 
+                    onPress={clearTagFilter}
+                    style={styles.clearAllButton}
+                  >
+                    <Text style={styles.clearAllButtonText}>Clear Filter</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setShowTagModal(false);
+                      setTagSearch('');
+                    }}
+                    style={styles.doneButton}
+                  >
+                    <Text style={styles.doneButtonText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </SafeAreaView>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+
+        {/* Files Modal */}
+        <Modal
+          visible={showFilesModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowFilesModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>All Files & Voice Notes</Text>
+                <TouchableOpacity onPress={() => setShowFilesModal(false)} style={styles.modalCloseButton}>
+                  <X size={24} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+              {/* Tab Switcher */}
+              <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
                 <TouchableOpacity
-                  style={[
-                    styles.modalTagItem,
-                    selectedTag === item && styles.modalTagItemSelected
-                  ]}
-                  onPress={() => toggleTagFilter(item)}
+                  style={[styles.tabButton, globalFilesTab === 'files' && styles.tabButtonActive]}
+                  onPress={() => setGlobalFilesTab('files')}
                 >
-                  <Text style={[
-                    styles.modalTagText,
-                    selectedTag === item && styles.modalTagTextSelected
-                  ]}>
-                    {item}
-                  </Text>
-                  {selectedTag === item && (
-                    <View style={styles.checkmark}>
-                      <Text style={styles.checkmarkText}>✓</Text>
+                  <Text style={[styles.tabButtonText, globalFilesTab === 'files' && styles.tabButtonTextActive]}>Files</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabButton, globalFilesTab === 'voice' && styles.tabButtonActive]}
+                  onPress={() => setGlobalFilesTab('voice')}
+                >
+                  <Text style={[styles.tabButtonText, globalFilesTab === 'voice' && styles.tabButtonTextActive]}>Voice Notes</Text>
+                </TouchableOpacity>
+              </View>
+              {/* Tab Content */}
+              {globalFilesTab === 'files' ? (
+                <FlatList
+                  data={cards.filter(card => (card.files && card.files.length))}
+                  keyExtractor={item => item.id}
+                  renderItem={({ item: card }) => (
+                    <View style={styles.fileGroup}>
+                      <Text style={styles.fileGroupTitle}>{card.name}</Text>
+                      {(card.files || []).map((file, idx) => (
+                        <View key={file.url} style={styles.fileItem}>
+                          <FileText size={16} color={Colors.primary} />
+                          <Text style={styles.fileItemText}>{file.name}</Text>
+                        </View>
+                      ))}
                     </View>
                   )}
-                </TouchableOpacity>
+                  ListEmptyComponent={<Text style={styles.emptyText}>No files found.</Text>}
+                />
+              ) : (
+                <FlatList
+                  data={cards.filter(card => (card.voiceNotes && card.voiceNotes.length))}
+                  keyExtractor={item => item.id}
+                  renderItem={({ item: card }) => (
+                    <View style={styles.fileGroup}>
+                      <Text style={styles.fileGroupTitle}>{card.name}</Text>
+                      {(card.voiceNotes || []).map((note, idx) => (
+                        <View key={note.id} style={styles.fileItem}>
+                          <Mic size={16} color={Colors.error} />
+                          <Text style={styles.fileItemText}>{note.name || `Voice Note ${idx + 1}`}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  ListEmptyComponent={<Text style={styles.emptyText}>No voice notes found.</Text>}
+                />
               )}
-              ListEmptyComponent={
-                <View style={styles.noResultsContainer}>
-                  <Text style={styles.noResultsText}>
-                    No tags found matching "{tagSearch}"
-                  </Text>
-                </View>
-              }
-            />
-            
-            <View style={styles.modalFooter}>
-              <TouchableOpacity 
-                onPress={clearTagFilter}
-                style={styles.clearAllButton}
-              >
-                <Text style={styles.clearAllButtonText}>Clear Filter</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={() => {
-                  setShowTagModal(false);
-                  setTagSearch('');
-                }}
-                style={styles.doneButton}
-              >
-                <Text style={styles.doneButtonText}>Done</Text>
-              </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
   headerContainer: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     paddingVertical: 16,
     paddingHorizontal: 16,
     shadowColor: Colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   headerContent: {
     flexDirection: 'row',
@@ -392,15 +483,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: Colors.white,
+    borderColor: Colors.cardBackground,
   },
   badgeText: {
     fontSize: 10,
     fontFamily: 'Inter-SemiBold',
-    color: Colors.white,
+    color: Colors.cardBackground,
   },
   actionContainerRow: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginBottom: 16,
@@ -418,7 +509,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   scanButtonText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontFamily: 'Inter-SemiBold',
     fontSize: 16,
   },
@@ -465,23 +556,31 @@ const styles = StyleSheet.create({
   // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '80%',
     minHeight: '60%',
+    width: '95%',
+    alignSelf: 'center',
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    position: 'relative',
   },
   modalTitle: {
     fontSize: 18,
@@ -516,7 +615,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   favoriteAvatarText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 16,
     fontFamily: 'Inter-Medium',
   },
@@ -556,7 +655,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     margin: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     backgroundColor: Colors.background,
     borderRadius: 8,
     borderWidth: 1,
@@ -570,17 +669,21 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   modalTagsList: {
-    flex: 1,
+    flex: 2,
     paddingHorizontal: 16,
+    maxHeight: 350,
+    minHeight: 100,
+    overflow: 'scroll',
   },
   modalTagItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    borderRadius: 8,
   },
   modalTagItemSelected: {
     backgroundColor: `${Colors.primary}10`,
@@ -604,7 +707,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkmarkText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
   },
@@ -648,6 +751,45 @@ const styles = StyleSheet.create({
   doneButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: Colors.white,
+    color: Colors.cardBackground,
+  },
+  fileGroup: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  fileGroupTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  fileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  fileItemText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    marginLeft: 8,
+  },
+  tabButton: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textPrimary,
+  },
+  tabButtonTextActive: {
+    color: Colors.cardBackground,
   },
 });

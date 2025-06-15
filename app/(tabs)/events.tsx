@@ -19,6 +19,7 @@ import Colors from '@/constants/Colors';
 import { format, addDays, addWeeks } from 'date-fns';
 import { useUserStore } from '@/store/userStore';
 import ProfileSetupModal from '@/components/ProfileSetupModal';
+import globalStyles, { spacing, typography, shadows } from '@/constants/Styles';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -369,12 +370,12 @@ export default function EventsScreen() {
             <Image source={{ uri: profile.avatar }} style={styles.profileAvatar} />
           ) : (
             <View style={styles.profileAvatarPlaceholder}>
-              <User size={20} color={Colors.white} />
+              <User size={20} color={Colors.textLight} />
             </View>
           )}
           {profile?.isSetup && (
             <View style={styles.editBadge}>
-              <Edit size={12} color={Colors.white} />
+              <Edit size={12} color={Colors.textLight} />
             </View>
           )}
         </TouchableOpacity>
@@ -385,7 +386,7 @@ export default function EventsScreen() {
           style={styles.createButton}
           onPress={handleCreateEvent}
         >
-          <Plus size={20} color={Colors.white} />
+          <Plus size={20} color={Colors.textLight} />
           <Text style={styles.createButtonText}>Create Event</Text>
         </TouchableOpacity>
 
@@ -433,121 +434,63 @@ export default function EventsScreen() {
         onRequestClose={() => setShowEventDetails(false)}
         statusBarTranslucent={true}
       >
-        <KeyboardAvoidingView 
-          style={styles.modalOverlay}
+        <KeyboardAvoidingView
+          style={{ flex: 1, justifyContent: 'flex-end' }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity 
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={() => setShowEventDetails(false)}
-          />
-          
-          <View style={styles.eventDetailsModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Event Details</Text>
+          <View style={styles.bottomSheetModal}>
+            {/* Drag handle */}
+            <View style={styles.dragHandleContainer}>
+              <View style={styles.dragHandle} />
+            </View>
+            <View style={styles.bottomSheetHeader}>
+              <Text style={styles.bottomSheetTitle}>{selectedEvent?.title}</Text>
               <TouchableOpacity
                 onPress={() => setShowEventDetails(false)}
-                style={styles.modalCloseButton}
+                style={styles.bottomSheetCloseButton}
+                accessibilityLabel="Close"
               >
                 <X size={24} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
-
             {selectedEvent && (
-              <ScrollView 
-                style={styles.eventDetailsContent}
+              <ScrollView
+                style={styles.bottomSheetContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
                 {selectedEvent.image && (
-                  <Image source={{ uri: selectedEvent.image }} style={styles.modalEventImage} />
+                  <Image source={{ uri: selectedEvent.image }} style={styles.bottomSheetEventImage} />
                 )}
-                
-                <View style={styles.modalEventContent}>
-                  <Text style={styles.modalEventTitle}>{selectedEvent.title}</Text>
-                  <Text style={styles.modalEventDescription}>{selectedEvent.description}</Text>
-                  
-                  <View style={styles.modalEventDetails}>
-                    <View style={styles.modalDetailItem}>
-                      <Calendar size={20} color={Colors.primary} />
-                      <Text style={styles.modalDetailText}>
-                        {format(selectedEvent.date, 'EEEE, MMMM d, yyyy')}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.modalDetailItem}>
-                      <Clock size={20} color={Colors.primary} />
-                      <Text style={styles.modalDetailText}>{selectedEvent.time}</Text>
-                    </View>
-                    
-                    <View style={styles.modalDetailItem}>
-                      <MapPin size={20} color={Colors.primary} />
-                      <Text style={styles.modalDetailText}>{selectedEvent.location}</Text>
-                    </View>
-                    
-                    <View style={styles.modalDetailItem}>
-                      <Users size={20} color={Colors.primary} />
-                      <Text style={styles.modalDetailText}>
-                        {selectedEvent.attendees} people attending
-                      </Text>
-                    </View>
+                <View style={styles.bottomSheetEventInfo}>
+                  {/* Date */}
+                  <View style={styles.infoRow}>
+                    <Calendar size={20} color={Colors.primary} />
+                    <Text style={styles.infoLabel}>Date</Text>
+                    <Text style={styles.infoValue}>{format(selectedEvent.date, 'EEEE, MMMM d, yyyy')}</Text>
                   </View>
-
-                  <View style={styles.commentsSection}>
-                    <Text style={styles.commentsTitle}>Comments ({selectedEvent.comments.length})</Text>
-                    
-                    {selectedEvent.comments.map((comment) => (
-                      <View key={comment.id} style={styles.commentItem}>
-                        <View style={styles.commentAvatar}>
-                          {comment.authorAvatar ? (
-                            <Image source={{ uri: comment.authorAvatar }} style={styles.commentAvatarImage} />
-                          ) : (
-                            <User size={16} color={Colors.white} />
-                          )}
-                        </View>
-                        <View style={styles.commentContent}>
-                          <Text style={styles.commentAuthor}>{comment.author}</Text>
-                          <Text style={styles.commentText}>{comment.text}</Text>
-                          <Text style={styles.commentTime}>
-                            {format(comment.timestamp, 'MMM d, h:mm a')}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-
-                    <View style={styles.addCommentContainer}>
-                      <View style={styles.commentInputContainer}>
-                        <View style={styles.commentUserAvatar}>
-                          {profile?.avatar ? (
-                            <Image source={{ uri: profile.avatar }} style={styles.commentAvatarImage} />
-                          ) : (
-                            <User size={16} color={Colors.white} />
-                          )}
-                        </View>
-                        <TextInput
-                          style={styles.commentInput}
-                          placeholder={profile?.isSetup ? "Add a comment..." : "Setup profile to comment"}
-                          placeholderTextColor={Colors.textLight}
-                          value={newComment}
-                          onChangeText={setNewComment}
-                          multiline
-                          editable={profile?.isSetup}
-                          returnKeyType="send"
-                          onSubmitEditing={() => handleAddComment(selectedEvent.id)}
-                          blurOnSubmit={false}
-                        />
-                      </View>
-                      <TouchableOpacity
-                        style={styles.sendCommentButton}
-                        onPress={() => handleAddComment(selectedEvent.id)}
-                        disabled={!newComment.trim() || !profile?.isSetup}
-                      >
-                        <Send size={20} color={newComment.trim() && profile?.isSetup ? Colors.primary : Colors.textLight} />
-                      </TouchableOpacity>
-                    </View>
+                  {/* Time */}
+                  <View style={styles.infoRow}>
+                    <Clock size={20} color={Colors.primary} />
+                    <Text style={styles.infoLabel}>Time</Text>
+                    <Text style={styles.infoValue}>{selectedEvent.time}</Text>
+                  </View>
+                  {/* Location */}
+                  <View style={styles.infoRow}>
+                    <MapPin size={20} color={Colors.primary} />
+                    <Text style={styles.infoLabel}>Location</Text>
+                    <Text style={styles.infoValue}>{selectedEvent.location}</Text>
+                  </View>
+                  {/* Attendees */}
+                  <View style={styles.infoRow}>
+                    <Users size={20} color={Colors.primary} />
+                    <Text style={styles.infoLabel}>Attendees</Text>
+                    <Text style={styles.infoValue}>{selectedEvent.attendees}{selectedEvent.maxAttendees ? `/${selectedEvent.maxAttendees}` : ''}</Text>
                   </View>
                 </View>
+                {/* Description */}
+                <Text style={styles.bottomSheetDescription}>{selectedEvent.description}</Text>
+                {/* Comments and actions can be added here if needed */}
               </ScrollView>
             )}
           </View>
@@ -701,7 +644,7 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   eventCard: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 16,
     marginBottom: 16,
     shadowColor: Colors.shadow,
@@ -854,16 +797,8 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
   },
-  eventDetailsModal: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: screenHeight * 0.9,
-    minHeight: screenHeight * 0.6,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 0,
-  },
   createEventModal: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: screenHeight * 0.8,
@@ -888,144 +823,6 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  eventDetailsContent: {
-    flex: 1,
-  },
-  modalEventImage: {
-    width: '100%',
-    height: 250,
-    resizeMode: 'cover',
-  },
-  modalEventContent: {
-    padding: 20,
-  },
-  modalEventTitle: {
-    fontSize: 24,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    marginBottom: 12,
-  },
-  modalEventDescription: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    lineHeight: 24,
-    marginBottom: 20,
-  },
-  modalEventDetails: {
-    marginBottom: 24,
-  },
-  modalDetailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.background,
-    borderRadius: 8,
-  },
-  modalDetailText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textPrimary,
-    marginLeft: 12,
-  },
-  commentsSection: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 20,
-  },
-  commentsTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    marginBottom: 16,
-  },
-  commentItem: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  commentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  commentAvatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  commentContent: {
-    flex: 1,
-  },
-  commentAuthor: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  commentText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  commentTime: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textLight,
-  },
-  addCommentContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  commentInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: Colors.background,
-    minHeight: 44,
-  },
-  commentUserAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    alignSelf: 'flex-end',
-    marginBottom: 2,
-  },
-  commentInput: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
-    maxHeight: 100,
-    paddingVertical: 4,
-    textAlignVertical: 'center',
-  },
-  sendCommentButton: {
-    marginLeft: 12,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: Colors.background,
   },
   createEventContent: {
     flex: 1,
@@ -1061,5 +858,85 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  bottomSheetModal: {
+    backgroundColor: Colors.cardBackground,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    minHeight: 400,
+    maxHeight: '90%',
+    ...shadows.large,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: Colors.textLight,
+  },
+  bottomSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  bottomSheetTitle: {
+    fontSize: typography.fontSize.lg,
+    fontFamily: typography.fontFamily.semiBold,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  bottomSheetCloseButton: {
+    padding: spacing.xs,
+    borderRadius: 20,
+    marginLeft: 8,
+  },
+  bottomSheetContent: {
+    paddingHorizontal: 24,
+  },
+  bottomSheetEventImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    marginBottom: 20,
+    marginTop: 8,
+  },
+  bottomSheetEventInfo: {
+    marginBottom: 24,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  infoLabel: {
+    fontSize: typography.fontSize.md,
+    color: Colors.textSecondary,
+    fontFamily: typography.fontFamily.medium,
+    marginLeft: 12,
+    minWidth: 80,
+  },
+  infoValue: {
+    fontSize: typography.fontSize.md,
+    color: Colors.textPrimary,
+    fontFamily: typography.fontFamily.semiBold,
+    marginLeft: 8,
+    flex: 1,
+  },
+  bottomSheetDescription: {
+    fontSize: typography.fontSize.md,
+    color: Colors.textSecondary,
+    fontFamily: typography.fontFamily.regular,
+    marginBottom: 24,
+    lineHeight: 22,
   },
 });

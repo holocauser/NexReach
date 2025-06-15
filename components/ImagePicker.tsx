@@ -24,6 +24,7 @@ interface ImagePickerProps {
   placeholder?: string;
   aspectRatio?: [number, number];
   quality?: number;
+  openCameraOnPress?: boolean;
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -36,19 +37,25 @@ const ImagePicker: React.FC<ImagePickerProps> = ({
   placeholder = "Add Photo",
   aspectRatio = [4, 3],
   quality = 0.8,
+  openCameraOnPress = false,
 }) => {
   const [showOptions, setShowOptions] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cameraRef = React.useRef<any>(null);
+  const [overlayVisible, setOverlayVisible] = useState(false);
 
   // Check camera permissions
   const [cameraPermission] = useCameraPermissions();
 
   const openImagePicker = () => {
     setError(null);
-    setShowOptions(true);
+    if (openCameraOnPress) {
+      openCamera();
+    } else {
+      setShowOptions(true);
+    }
   };
 
   const pickFromLibrary = async () => {
@@ -83,11 +90,11 @@ const ImagePicker: React.FC<ImagePickerProps> = ({
 
       console.log('📸 Image picker completed:', {
         canceled: result.canceled,
-        hasAssets: result.assets?.length > 0
+        hasAssets: (result.assets || []).length > 0
       });
 
       // Handle the result properly
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (!result.canceled && (result.assets || []).length > 0) {
         const selectedAsset = result.assets[0];
         if (selectedAsset.uri) {
           console.log('✅ Image selected successfully');
@@ -220,6 +227,8 @@ const ImagePicker: React.FC<ImagePickerProps> = ({
         onPress={openImagePicker}
         activeOpacity={0.8}
         disabled={loading}
+        onPressIn={() => setOverlayVisible(true)}
+        onPressOut={() => setOverlayVisible(false)}
       >
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -229,8 +238,8 @@ const ImagePicker: React.FC<ImagePickerProps> = ({
         ) : currentImage ? (
           <>
             <Image source={{ uri: currentImage }} style={styles.image} />
-            <View style={styles.imageOverlay}>
-              <ImageIcon size={24} color={Colors.white} />
+            <View style={[styles.imageOverlay, overlayVisible && { opacity: 1 }] }>
+              <ImageIcon size={24} color={Colors.cardBackground} />
               <Text style={styles.overlayText}>Change Photo</Text>
             </View>
           </>
@@ -264,21 +273,21 @@ const ImagePicker: React.FC<ImagePickerProps> = ({
         onRequestClose={() => setShowOptions(false)}
         statusBarTranslucent={true}
       >
-        <View style={styles.modalOverlay}>
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          {/* Dimmed overlay disables background interaction */}
           <TouchableOpacity 
-            style={styles.modalBackdrop}
+            style={styles.bottomSheetOverlay}
             activeOpacity={1}
             onPress={() => setShowOptions(false)}
           />
-          
-          <View style={styles.optionsContainer}>
+          {/* Bottom sheet options */}
+          <View style={styles.bottomSheet}>
             <View style={styles.optionsHeader}>
               <Text style={styles.optionsTitle}>Add Photo</Text>
               <TouchableOpacity onPress={() => setShowOptions(false)}>
                 <X size={24} color={Colors.textPrimary} />
               </TouchableOpacity>
             </View>
-            
             {Platform.OS !== 'web' && (
               <TouchableOpacity 
                 style={styles.optionButton} 
@@ -296,7 +305,6 @@ const ImagePicker: React.FC<ImagePickerProps> = ({
                 </View>
               </TouchableOpacity>
             )}
-            
             <TouchableOpacity 
               style={styles.optionButton} 
               onPress={pickFromLibrary}
@@ -418,7 +426,7 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   overlayText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 14,
     fontFamily: 'Inter-Medium',
     marginTop: 8,
@@ -473,19 +481,29 @@ const styles = StyleSheet.create({
     color: Colors.error,
     marginLeft: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+  bottomSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1,
   },
-  modalBackdrop: {
-    flex: 1,
-  },
-  optionsContainer: {
-    backgroundColor: Colors.white,
+  bottomSheet: {
+    backgroundColor: Colors.cardBackground,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingTop: 8,
+    paddingHorizontal: 0,
+    zIndex: 2,
+    minHeight: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
   optionsHeader: {
     flexDirection: 'row',
@@ -569,12 +587,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 4,
-    borderColor: Colors.white,
+    borderColor: Colors.cardBackground,
   },
   captureButtonInner: {
     width: 60,
     height: 60,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 30,
   },
   cameraLoadingOverlay: {
@@ -589,7 +607,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   cameraLoadingText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     marginTop: 16,

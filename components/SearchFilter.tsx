@@ -351,7 +351,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           ]}>
             Specialty {filter.specialty.length > 0 ? `(${filter.specialty.length})` : ''}
           </Text>
-          <ChevronDown size={16} color={filter.specialty.length > 0 ? Colors.white : Colors.textPrimary} />
+          <ChevronDown size={16} color={filter.specialty.length > 0 ? Colors.cardBackground : Colors.textPrimary} />
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -364,7 +364,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           ]}>
             Languages {filter.languages.length > 0 ? `(${filter.languages.length})` : ''}
           </Text>
-          <ChevronDown size={16} color={filter.languages.length > 0 ? Colors.white : Colors.textPrimary} />
+          <ChevronDown size={16} color={filter.languages.length > 0 ? Colors.cardBackground : Colors.textPrimary} />
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -389,7 +389,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             ]}>
               Services {filter.services.length > 0 ? `(${filter.services.length})` : ''}
             </Text>
-            <ChevronDown size={16} color={filter.services.length > 0 ? Colors.white : Colors.textPrimary} />
+            <ChevronDown size={16} color={filter.services.length > 0 ? Colors.cardBackground : Colors.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.radiusContainer}>
@@ -434,7 +434,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             onSearch();
           }}
         >
-          <SearchIcon size={16} color={Colors.white} />
+          <SearchIcon size={16} color={Colors.cardBackground} />
           <Text style={styles.searchText}>Search Providers</Text>
         </TouchableOpacity>
       </View>
@@ -489,7 +489,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     padding: 16,
     borderRadius: 12,
     marginHorizontal: 16,
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
     top: '100%',
     left: 0,
     right: 0,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   filterButtonTextActive: {
-    color: Colors.white,
+    color: Colors.cardBackground,
   },
   advancedButton: {
     flexDirection: 'row',
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   radiusButtonTextActive: {
-    color: Colors.white,
+    color: Colors.cardBackground,
   },
   actions: {
     flexDirection: 'row',
@@ -693,25 +693,30 @@ const styles = StyleSheet.create({
   searchText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: Colors.white,
+    color: Colors.cardBackground,
     marginLeft: 8,
   },
   // Modal Styles - Updated for better positioning
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalBackdrop: {
     flex: 1,
   },
   modalContainer: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.cardBackground,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '85%',
     minHeight: '60%',
     paddingBottom: Platform.OS === 'ios' ? 34 : 0, // Account for safe area
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -720,6 +725,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    position: 'relative',
   },
   modalTitle: {
     fontSize: 18,
@@ -753,6 +759,9 @@ const styles = StyleSheet.create({
   modalOptionsList: {
     flex: 1,
     paddingHorizontal: 16,
+    maxHeight: 350,
+    minHeight: 100,
+    overflow: 'scroll',
   },
   modalOptionItem: {
     flexDirection: 'row',
@@ -762,6 +771,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    borderRadius: 8,
   },
   modalOptionItemSelected: {
     backgroundColor: `${Colors.primary}10`,
@@ -785,7 +795,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkmarkText: {
-    color: Colors.white,
+    color: Colors.cardBackground,
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
   },
@@ -811,7 +821,7 @@ const styles = StyleSheet.create({
   doneButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
-    color: Colors.white,
+    color: Colors.cardBackground,
   },
 });
 
