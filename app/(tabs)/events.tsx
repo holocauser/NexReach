@@ -18,8 +18,10 @@ import { Plus, Calendar, MapPin, Clock, Users, Share2, Heart, MessageCircle, Cam
 import Colors from '@/constants/Colors';
 import { format, addDays, addWeeks } from 'date-fns';
 import { useUserStore } from '@/store/userStore';
+import { useEventStore } from '@/store/eventStore';
 import ProfileSetupModal from '@/components/ProfileSetupModal';
 import globalStyles, { spacing, typography, shadows } from '@/constants/Styles';
+import { useRouter } from 'expo-router';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -40,6 +42,8 @@ interface Event {
   isLiked: boolean;
   comments: Comment[];
   tags: string[];
+  price: number | null; // null means free
+  ticketStatus?: 'none' | 'reserved' | 'purchased';
 }
 
 interface Comment {
@@ -78,7 +82,9 @@ const mockEvents: Event[] = [
         userId: 'user_sample1'
       }
     ],
-    tags: ['Legal', 'Networking', 'Professional']
+    tags: ['Legal', 'Networking', 'Professional'],
+    price: null,
+    ticketStatus: 'none'
   },
   {
     id: '2',
@@ -96,7 +102,9 @@ const mockEvents: Event[] = [
     likes: 67,
     isLiked: true,
     comments: [],
-    tags: ['Medical', 'Conference', 'CME']
+    tags: ['Medical', 'Conference', 'CME'],
+    price: 100,
+    ticketStatus: 'none'
   },
   {
     id: '3',
@@ -131,19 +139,21 @@ const mockEvents: Event[] = [
         userId: 'user_sample3'
       }
     ],
-    tags: ['Startup', 'Pitch', 'Networking', 'Tech']
+    tags: ['Startup', 'Pitch', 'Networking', 'Tech'],
+    price: null,
+    ticketStatus: 'none'
   }
 ];
 
 export default function EventsScreen() {
   const { profile, isLoaded, loadProfile } = useUserStore();
-  const [events, setEvents] = useState<Event[]>(mockEvents);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { events, toggleRSVP, toggleLike, addComment } = useEventStore();
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventDetails, setShowEventDetails] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     if (!isLoaded) {
@@ -171,33 +181,13 @@ export default function EventsScreen() {
 
   const handleRSVP = (eventId: string) => {
     checkProfileSetup(() => {
-      setEvents(prevEvents =>
-        prevEvents.map(event =>
-          event.id === eventId
-            ? {
-                ...event,
-                isRSVPed: !event.isRSVPed,
-                attendees: event.isRSVPed ? event.attendees - 1 : event.attendees + 1
-              }
-            : event
-        )
-      );
+      toggleRSVP(eventId);
     });
   };
 
   const handleLike = (eventId: string) => {
     checkProfileSetup(() => {
-      setEvents(prevEvents =>
-        prevEvents.map(event =>
-          event.id === eventId
-            ? {
-                ...event,
-                isLiked: !event.isLiked,
-                likes: event.isLiked ? event.likes - 1 : event.likes + 1
-              }
-            : event
-        )
-      );
+      toggleLike(eventId);
     });
   };
 
@@ -222,22 +212,12 @@ export default function EventsScreen() {
     checkProfileSetup(() => {
       if (!profile) return;
 
-      const comment: Comment = {
-        id: Math.random().toString(36).substring(2, 11),
+      addComment(eventId, {
         author: profile.name,
         authorAvatar: profile.avatar,
         text: newComment.trim(),
-        timestamp: new Date(),
         userId: profile.id
-      };
-
-      setEvents(prevEvents =>
-        prevEvents.map(event =>
-          event.id === eventId
-            ? { ...event, comments: [...event.comments, comment] }
-            : event
-        )
-      );
+      });
 
       setNewComment('');
     });
@@ -250,103 +230,81 @@ export default function EventsScreen() {
 
   const handleCreateEvent = () => {
     checkProfileSetup(() => {
-      setShowCreateModal(true);
+      router.push('/events/create');
     });
   };
 
   const handleProfilePress = () => {
     if (!profile?.isSetup) {
-      setShowProfileSetup(true);
+      router.push('/profile');
     } else {
-      setShowProfileEdit(true);
+      router.push('/profile');
     }
   };
 
   const renderEventCard = ({ item: event }: { item: Event }) => (
     <TouchableOpacity
-      style={styles.eventCard}
+      style={[styles.eventCard, shadows.medium]}
       onPress={() => openEventDetails(event)}
-      activeOpacity={0.9}
     >
-      {event.image && (
-        <Image source={{ uri: event.image }} style={styles.eventImage} />
-      )}
-      
+      <Image
+        source={{ uri: event.image }}
+        style={styles.eventImage}
+        resizeMode="cover"
+      />
       <View style={styles.eventContent}>
         <View style={styles.eventHeader}>
-          <View style={styles.organizerInfo}>
-            {event.organizerAvatar && (
-              <Image source={{ uri: event.organizerAvatar }} style={styles.organizerAvatar} />
-            )}
-            <Text style={styles.organizerName}>{event.organizer}</Text>
-          </View>
-          
-          <View style={styles.eventDate}>
-            <Calendar size={16} color={Colors.primary} />
-            <Text style={styles.dateText}>{format(event.date, 'MMM d')}</Text>
+          <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
+          <View style={styles.priceTag}>
+            <Text style={styles.priceText}>
+              {event.price === null ? 'Free' : `$${event.price}`}
+            </Text>
           </View>
         </View>
-
-        <Text style={styles.eventTitle}>{event.title}</Text>
-        <Text style={styles.eventDescription} numberOfLines={2}>
-          {event.description}
-        </Text>
-
+        
         <View style={styles.eventDetails}>
-          <View style={styles.detailItem}>
-            <Clock size={16} color={Colors.textSecondary} />
+          <View style={styles.detailRow}>
+            <Calendar size={16} color={Colors.gray} />
+            <Text style={styles.detailText}>
+              {format(event.date, 'MMM d, yyyy')}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Clock size={16} color={Colors.gray} />
             <Text style={styles.detailText}>{event.time}</Text>
           </View>
-          
-          <View style={styles.detailItem}>
-            <MapPin size={16} color={Colors.textSecondary} />
+          <View style={styles.detailRow}>
+            <MapPin size={16} color={Colors.gray} />
             <Text style={styles.detailText} numberOfLines={1}>{event.location}</Text>
-          </View>
-          
-          <View style={styles.detailItem}>
-            <Users size={16} color={Colors.textSecondary} />
-            <Text style={styles.detailText}>
-              {event.attendees}{event.maxAttendees ? `/${event.maxAttendees}` : ''} attending
-            </Text>
           </View>
         </View>
 
-        <View style={styles.eventActions}>
-          <TouchableOpacity
-            style={[styles.rsvpButton, event.isRSVPed && styles.rsvpButtonActive]}
-            onPress={() => handleRSVP(event.id)}
-          >
-            <Text style={[styles.rsvpButtonText, event.isRSVPed && styles.rsvpButtonTextActive]}>
-              {event.isRSVPed ? 'Going' : 'RSVP'}
+        <View style={styles.eventFooter}>
+          <View style={styles.attendeesContainer}>
+            <Users size={16} color={Colors.gray} />
+            <Text style={styles.attendeesText}>
+              {event.attendees} {event.maxAttendees ? `/ ${event.maxAttendees}` : ''} attending
             </Text>
-          </TouchableOpacity>
-
-          <View style={styles.socialActions}>
+          </View>
+          <View style={styles.interactionContainer}>
             <TouchableOpacity
-              style={styles.socialButton}
+              style={styles.interactionButton}
               onPress={() => handleLike(event.id)}
             >
               <Heart
-                size={20}
-                color={event.isLiked ? Colors.error : Colors.textSecondary}
-                fill={event.isLiked ? Colors.error : 'transparent'}
+                size={16}
+                color={event.isLiked ? Colors.primary : Colors.gray}
+                fill={event.isLiked ? Colors.primary : 'none'}
               />
-              <Text style={styles.socialCount}>{event.likes}</Text>
+              <Text style={[styles.interactionText, event.isLiked && styles.interactionTextActive]}>
+                {event.likes}
+              </Text>
             </TouchableOpacity>
-
             <TouchableOpacity
-              style={styles.socialButton}
-              onPress={() => openEventDetails(event)}
-            >
-              <MessageCircle size={20} color={Colors.textSecondary} />
-              <Text style={styles.socialCount}>{event.comments.length}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.socialButton}
+              style={styles.interactionButton}
               onPress={() => handleShare(event)}
             >
-              <Share2 size={20} color={Colors.textSecondary} />
+              <Share2 size={16} color={Colors.gray} />
             </TouchableOpacity>
           </View>
         </View>
@@ -354,14 +312,255 @@ export default function EventsScreen() {
     </TouchableOpacity>
   );
 
+  const EventDetailsModal = ({ event, visible, onClose }: { event: Event; visible: boolean; onClose: () => void }) => {
+    const { profile } = useUserStore();
+    const [newComment, setNewComment] = useState('');
+    const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+
+    const handlePurchaseTicket = () => {
+      if (!profile) {
+        Alert.alert(
+          'Login Required',
+          'Please log in to purchase tickets.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Log In', onPress: () => {/* TODO: Navigate to login */} }
+          ]
+        );
+        return;
+      }
+      setShowPurchaseModal(true);
+    };
+
+    const confirmPurchase = () => {
+      // TODO: Implement actual purchase logic
+      Alert.alert(
+        'Success',
+        'Your ticket has been purchased!',
+        [{ text: 'OK', onPress: () => setShowPurchaseModal(false) }]
+      );
+    };
+
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={onClose}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <ScrollView style={styles.modalScroll}>
+              <Image
+                source={{ uri: event.image }}
+                style={styles.modalImage}
+                resizeMode="cover"
+              />
+              
+              <View style={styles.modalHeader}>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>{event.title}</Text>
+                  <View style={styles.priceTag}>
+                    <Text style={styles.priceText}>
+                      {event.price === null ? 'Free' : `$${event.price}`}
+                    </Text>
+                  </View>
+                </View>
+                
+          <View style={styles.organizerInfo}>
+            {event.organizerAvatar && (
+                    <Image
+                      source={{ uri: event.organizerAvatar }}
+                      style={styles.organizerAvatar}
+                    />
+            )}
+            <Text style={styles.organizerName}>{event.organizer}</Text>
+                </View>
+          </View>
+          
+              <View style={styles.eventInfo}>
+                <View style={styles.infoRow}>
+                  <Calendar size={20} color={Colors.gray} />
+                  <Text style={styles.infoText}>
+                    {format(event.date, 'EEEE, MMMM d, yyyy')}
+                  </Text>
+          </View>
+                
+                <View style={styles.infoRow}>
+                  <Clock size={20} color={Colors.gray} />
+                  <Text style={styles.infoText}>{event.time}</Text>
+        </View>
+
+                <View style={styles.infoRow}>
+                  <MapPin size={20} color={Colors.gray} />
+                  <Text style={styles.infoText}>{event.location}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.description}>{event.description}</Text>
+
+              <View style={styles.statsContainer}>
+                <View style={styles.statItem}>
+                  <Users size={20} color={Colors.gray} />
+                  <Text style={styles.statText}>
+                    {event.attendees} {event.maxAttendees ? `/ ${event.maxAttendees}` : ''} attending
+                  </Text>
+          </View>
+          
+                <View style={styles.statItem}>
+                  <Heart
+                    size={20}
+                    color={event.isLiked ? Colors.primary : Colors.gray}
+                    fill={event.isLiked ? Colors.primary : 'none'}
+                  />
+                  <Text style={[styles.statText, event.isLiked && styles.statTextActive]}>
+                    {event.likes} likes
+                  </Text>
+                </View>
+          </View>
+          
+              <View style={styles.commentsSection}>
+                <Text style={styles.sectionTitle}>Comments</Text>
+                
+                {event.comments.map((comment) => (
+                  <View key={comment.id} style={styles.commentItem}>
+                    <Image
+                      source={{ uri: comment.authorAvatar }}
+                      style={styles.commentAvatar}
+                    />
+                    <View style={styles.commentContent}>
+                      <View style={styles.commentHeader}>
+                        <Text style={styles.commentAuthor}>{comment.author}</Text>
+                        <Text style={styles.commentTime}>
+                          {format(comment.timestamp, 'MMM d, h:mm a')}
+            </Text>
+          </View>
+                      <Text style={styles.commentText}>{comment.text}</Text>
+        </View>
+                  </View>
+                ))}
+
+                {profile ? (
+                  <View style={styles.commentInputContainer}>
+                    <Image
+                      source={{ uri: profile.avatar }}
+                      style={styles.commentInputAvatar}
+                    />
+                    <TextInput
+                      style={styles.commentInput}
+                      placeholder="Add a comment..."
+                      value={newComment}
+                      onChangeText={setNewComment}
+                      multiline
+                    />
+          <TouchableOpacity
+                      style={[
+                        styles.sendButton,
+                        !newComment.trim() && styles.sendButtonDisabled
+                      ]}
+                      disabled={!newComment.trim()}
+                      onPress={() => handleAddComment(event.id)}
+                    >
+                      <Send
+                        size={20}
+                        color={newComment.trim() ? Colors.primary : Colors.gray}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.loginPrompt}
+                    onPress={() => {/* TODO: Navigate to login */}}
+                  >
+                    <Text style={styles.loginPromptText}>
+                      Log in to leave a comment
+            </Text>
+          </TouchableOpacity>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+            <TouchableOpacity
+                style={[
+                  styles.ticketButton,
+                  event.ticketStatus === 'purchased' && styles.ticketButtonPurchased
+                ]}
+                onPress={handlePurchaseTicket}
+              >
+                <Text style={styles.ticketButtonText}>
+                  {event.ticketStatus === 'purchased'
+                    ? 'Ticket Purchased'
+                    : event.price === null
+                    ? 'Get Free Ticket'
+                    : `Buy Ticket - $${event.price}`}
+                </Text>
+            </TouchableOpacity>
+            </View>
+          </View>
+
+            <TouchableOpacity
+            style={styles.closeButton}
+            onPress={onClose}
+            >
+            <X size={24} color={Colors.white} />
+            </TouchableOpacity>
+        </View>
+
+        <Modal
+          visible={showPurchaseModal}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={styles.purchaseModalContainer}>
+            <View style={styles.purchaseModalContent}>
+              <Text style={styles.purchaseModalTitle}>Confirm Purchase</Text>
+              <Text style={styles.purchaseModalText}>
+                Would you like to purchase a ticket for {event.title}?
+              </Text>
+              <Text style={styles.purchaseModalPrice}>
+                Price: {event.price === null ? 'Free' : `$${event.price}`}
+              </Text>
+              
+              <View style={styles.purchaseModalButtons}>
+            <TouchableOpacity
+                  style={[styles.purchaseModalButton, styles.purchaseModalButtonCancel]}
+                  onPress={() => setShowPurchaseModal(false)}
+                >
+                  <Text style={styles.purchaseModalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.purchaseModalButton, styles.purchaseModalButtonConfirm]}
+                  onPress={confirmPurchase}
+                >
+                  <Text style={[styles.purchaseModalButtonText, styles.purchaseModalButtonTextConfirm]}>
+                    Confirm
+                  </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+        </Modal>
+      </Modal>
+  );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Events</Text>
+          <TouchableOpacity 
+            style={styles.createEventBtn}
+            onPress={handleCreateEvent}
+            activeOpacity={0.85}
+          >
+            <Plus size={22} color={'#fff'} />
+            <Text style={styles.createEventBtnText}>Create Event</Text>
+          </TouchableOpacity>
           <Text style={styles.headerSubtitle}>Discover and share networking events</Text>
         </View>
-        
         <TouchableOpacity 
           style={styles.profileButton}
           onPress={handleProfilePress}
@@ -382,14 +581,6 @@ export default function EventsScreen() {
       </View>
 
       <View style={styles.contentContainer}>
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={handleCreateEvent}
-        >
-          <Plus size={20} color={Colors.textLight} />
-          <Text style={styles.createButtonText}>Create Event</Text>
-        </TouchableOpacity>
-
         <FlatList
           data={events}
           keyExtractor={(item) => item.id}
@@ -427,127 +618,13 @@ export default function EventsScreen() {
       />
 
       {/* Event Details Modal */}
-      <Modal
-        visible={showEventDetails}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowEventDetails(false)}
-        statusBarTranslucent={true}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1, justifyContent: 'flex-end' }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.bottomSheetModal}>
-            {/* Drag handle */}
-            <View style={styles.dragHandleContainer}>
-              <View style={styles.dragHandle} />
-            </View>
-            <View style={styles.bottomSheetHeader}>
-              <Text style={styles.bottomSheetTitle}>{selectedEvent?.title}</Text>
-              <TouchableOpacity
-                onPress={() => setShowEventDetails(false)}
-                style={styles.bottomSheetCloseButton}
-                accessibilityLabel="Close"
-              >
-                <X size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
             {selectedEvent && (
-              <ScrollView
-                style={styles.bottomSheetContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {selectedEvent.image && (
-                  <Image source={{ uri: selectedEvent.image }} style={styles.bottomSheetEventImage} />
-                )}
-                <View style={styles.bottomSheetEventInfo}>
-                  {/* Date */}
-                  <View style={styles.infoRow}>
-                    <Calendar size={20} color={Colors.primary} />
-                    <Text style={styles.infoLabel}>Date</Text>
-                    <Text style={styles.infoValue}>{format(selectedEvent.date, 'EEEE, MMMM d, yyyy')}</Text>
-                  </View>
-                  {/* Time */}
-                  <View style={styles.infoRow}>
-                    <Clock size={20} color={Colors.primary} />
-                    <Text style={styles.infoLabel}>Time</Text>
-                    <Text style={styles.infoValue}>{selectedEvent.time}</Text>
-                  </View>
-                  {/* Location */}
-                  <View style={styles.infoRow}>
-                    <MapPin size={20} color={Colors.primary} />
-                    <Text style={styles.infoLabel}>Location</Text>
-                    <Text style={styles.infoValue}>{selectedEvent.location}</Text>
-                  </View>
-                  {/* Attendees */}
-                  <View style={styles.infoRow}>
-                    <Users size={20} color={Colors.primary} />
-                    <Text style={styles.infoLabel}>Attendees</Text>
-                    <Text style={styles.infoValue}>{selectedEvent.attendees}{selectedEvent.maxAttendees ? `/${selectedEvent.maxAttendees}` : ''}</Text>
-                  </View>
-                </View>
-                {/* Description */}
-                <Text style={styles.bottomSheetDescription}>{selectedEvent.description}</Text>
-                {/* Comments and actions can be added here if needed */}
-              </ScrollView>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Create Event Modal */}
-      <Modal
-        visible={showCreateModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCreateModal(false)}
-        statusBarTranslucent={true}
-      >
-        <KeyboardAvoidingView 
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <TouchableOpacity 
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={() => setShowCreateModal(false)}
-          />
-          
-          <View style={styles.createEventModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create Event</Text>
-              <TouchableOpacity
-                onPress={() => setShowCreateModal(false)}
-                style={styles.modalCloseButton}
-              >
-                <X size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView 
-              style={styles.createEventContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.createEventForm}>
-                <TouchableOpacity style={styles.imageUploadButton}>
-                  <Camera size={32} color={Colors.textLight} />
-                  <Text style={styles.imageUploadText}>Add Event Photo</Text>
-                </TouchableOpacity>
-
-                <Text style={styles.comingSoonText}>
-                  Event creation feature coming soon! 🎉
-                </Text>
-                <Text style={styles.comingSoonSubtext}>
-                  We're working on bringing you the ability to create and manage your own networking events. 
-                  Stay tuned for updates!
-                </Text>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        <EventDetailsModal
+          event={selectedEvent}
+          visible={showEventDetails}
+          onClose={() => setShowEventDetails(false)}
+        />
+      )}
     </View>
   );
 }
@@ -558,30 +635,56 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
-    backgroundColor: Colors.primary,
-    padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
   },
   headerContent: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 28,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.white,
-    marginBottom: 4,
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: Colors.textPrimary,
   },
   headerSubtitle: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: 'rgba(255, 255, 255, 0.8)',
   },
+  createEventBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 24,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    marginBottom: 10,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  createEventBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    marginLeft: 10,
+  },
   profileButton: {
-    marginLeft: 16,
-    position: 'relative',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
   },
   profileAvatar: {
     width: 40,
@@ -617,47 +720,20 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 16,
   },
-  createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    alignSelf: 'flex-start',
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: Colors.white,
-    marginLeft: 8,
-  },
   eventsList: {
     padding: 16,
     paddingTop: 0,
   },
   eventCard: {
-    backgroundColor: Colors.cardBackground,
-    borderRadius: 16,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    marginHorizontal: 20,
     marginBottom: 16,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
     overflow: 'hidden',
   },
   eventImage: {
     width: '100%',
     height: 200,
-    resizeMode: 'cover',
   },
   eventContent: {
     padding: 16,
@@ -665,57 +741,31 @@ const styles = StyleSheet.create({
   eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
-  organizerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  eventTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
     flex: 1,
+    marginRight: 12,
   },
-  organizerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 8,
-  },
-  organizerName: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textSecondary,
-    flex: 1,
-  },
-  eventDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: `${Colors.primary}10`,
+  priceTag: {
+    backgroundColor: Colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
-  dateText: {
+  priceText: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
-    marginLeft: 4,
-  },
-  eventTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  eventDescription: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 16,
+    color: Colors.white,
   },
   eventDetails: {
     marginBottom: 16,
   },
-  detailItem: {
+  detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
@@ -725,115 +775,63 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
     marginLeft: 8,
-    flex: 1,
   },
-  eventActions: {
+  eventFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  rsvpButton: {
-    backgroundColor: Colors.background,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  attendeesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  rsvpButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  rsvpButtonText: {
+  attendeesText: {
     fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textSecondary,
+    marginLeft: 8,
   },
-  rsvpButtonTextActive: {
-    color: Colors.white,
-  },
-  socialActions: {
+  interactionContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
   },
-  socialButton: {
+  interactionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  socialCount: {
+  interactionText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
     color: Colors.textSecondary,
+  },
+  interactionTextActive: {
+    color: Colors.primary,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
-    minHeight: 400,
+    paddingHorizontal: 20,
   },
   emptyText: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: 'Inter-SemiBold',
     color: Colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
     textAlign: 'center',
+    marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
   },
-  // Modal Styles - Improved for keyboard handling
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    flex: 1,
-  },
-  createEventModal: {
-    backgroundColor: Colors.cardBackground,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: screenHeight * 0.8,
-    minHeight: screenHeight * 0.5,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 0,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-  },
-  modalCloseButton: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  createEventContent: {
-    flex: 1,
-  },
-  createEventForm: {
-    padding: 20,
-  },
-  imageUploadButton: {
-    borderWidth: 2,
-    borderColor: Colors.border,
-    borderStyle: 'dashed',
+  imageUploadContainer: {
+    width: '100%',
+    height: 200,
+    backgroundColor: Colors.inputBackground,
     borderRadius: 12,
     padding: 40,
     alignItems: 'center',
@@ -859,84 +857,311 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
-  bottomSheetModal: {
-    backgroundColor: Colors.cardBackground,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    minHeight: 400,
-    maxHeight: '90%',
-    ...shadows.large,
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.modalOverlay,
   },
-  dragHandleContainer: {
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 4,
+  modalContent: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    marginTop: 60,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
-  dragHandle: {
-    width: 48,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: Colors.textLight,
-  },
-  bottomSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  bottomSheetTitle: {
-    fontSize: typography.fontSize.lg,
-    fontFamily: typography.fontFamily.semiBold,
-    color: Colors.textPrimary,
+  modalScroll: {
     flex: 1,
   },
-  bottomSheetCloseButton: {
-    padding: spacing.xs,
-    borderRadius: 20,
-    marginLeft: 8,
-  },
-  bottomSheetContent: {
-    paddingHorizontal: 24,
-  },
-  bottomSheetEventImage: {
+  modalImage: {
     width: '100%',
-    height: 180,
-    borderRadius: 16,
-    marginBottom: 20,
-    marginTop: 8,
+    height: 250,
   },
-  bottomSheetEventInfo: {
-    marginBottom: 24,
+  modalHeader: {
+    padding: 20,
   },
-  infoRow: {
+  modalTitleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: Colors.textPrimary,
+    flex: 1,
+    marginRight: 12,
+  },
+  organizerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
-  infoLabel: {
-    fontSize: typography.fontSize.md,
-    color: Colors.textSecondary,
-    fontFamily: typography.fontFamily.medium,
-    marginLeft: 12,
-    minWidth: 80,
+  organizerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
   },
-  infoValue: {
-    fontSize: typography.fontSize.md,
+  organizerName: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textSecondary,
+  },
+  eventInfo: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  infoText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
     color: Colors.textPrimary,
-    fontFamily: typography.fontFamily.semiBold,
+    marginLeft: 12,
+  },
+  description: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    lineHeight: 24,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 24,
+  },
+  statText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textSecondary,
     marginLeft: 8,
+  },
+  statTextActive: {
+    color: Colors.primary,
+  },
+  commentsSection: {
+    padding: 20,
+    backgroundColor: Colors.white,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  commentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  commentContent: {
     flex: 1,
   },
-  bottomSheetDescription: {
-    fontSize: typography.fontSize.md,
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  commentAuthor: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
+  },
+  commentTime: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
-    fontFamily: typography.fontFamily.regular,
+  },
+  commentText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  commentInputAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    maxHeight: 100,
+  },
+  sendButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  loginPrompt: {
+    padding: 16,
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  loginPromptText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.primary,
+    textAlign: 'center',
+  },
+  modalFooter: {
+    padding: 20,
+    backgroundColor: Colors.white,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  ticketButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  ticketButtonPurchased: {
+    backgroundColor: Colors.success,
+  },
+  ticketButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.white,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  purchaseModalContainer: {
+    flex: 1,
+    backgroundColor: Colors.modalOverlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  purchaseModalContent: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 24,
+    width: '80%',
+    maxWidth: 400,
+  },
+  purchaseModalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  purchaseModalText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  purchaseModalPrice: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.primary,
     marginBottom: 24,
-    lineHeight: 22,
+    textAlign: 'center',
+  },
+  purchaseModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  purchaseModalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  purchaseModalButtonCancel: {
+    backgroundColor: Colors.inputBackground,
+    marginRight: 8,
+  },
+  purchaseModalButtonConfirm: {
+    backgroundColor: Colors.primary,
+    marginLeft: 8,
+  },
+  purchaseModalButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
+  },
+  purchaseModalButtonTextConfirm: {
+    color: Colors.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    flex: 1,
+  },
+  createEventModal: {
+    backgroundColor: Colors.cardBackground,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: screenHeight * 0.8,
+    minHeight: screenHeight * 0.5,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 0,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  createEventContent: {
+    flex: 1,
+  },
+  createEventForm: {
+    padding: 20,
+  },
+  imageUploadButton: {
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 40,
+    alignItems: 'center',
+    marginBottom: 32,
   },
 });

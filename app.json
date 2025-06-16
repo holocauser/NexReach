@@ -24,6 +24,7 @@
         "NSCameraUsageDescription": "This app uses the camera to scan cards and take photos.",
         "NSPhotoLibraryUsageDescription": "This app accesses your photos to let you share them with your friends.",
         "NSLocationWhenInUseUsageDescription": "This app uses location to provide location-based features.",
+        "NSMicrophoneUsageDescription": "This app needs access to your microphone to record audio.",
         "UIBackgroundModes": [
           "remote-notification",
           "remote-notification"
@@ -46,7 +47,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",     
+      "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -54,7 +55,9 @@
       "expo-camera",
       "expo-image-picker",
       "expo-location",
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},

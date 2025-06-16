@@ -8,6 +8,7 @@ const Colors = {
   textPrimary: '#111827', // Dark gray for primary text
   textSecondary: '#4B5563', // Medium gray for secondary text
   textLight: '#9CA3AF', // Light gray for disabled/placeholder text
+  gray: '#6B7280', // Medium gray for icons and secondary elements
   
   // Status colors
   success: '#059669', // Green

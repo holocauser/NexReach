@@ -28,7 +28,7 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 export default function ContactDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { getCardById, toggleFavorite, updateLastContacted, updateCard } = useCardStore();
+  const { getCardById, toggleFavorite, updateCard } = useCardStore();
   const { getReferralsByReferrer, getReferralsByRecipient } = useReferralStore();
   
   const [card, setCard] = useState<BusinessCard | null>(null);
@@ -64,7 +64,7 @@ export default function ContactDetailsScreen() {
     } else {
       Linking.openURL(phoneUrl);
     }
-    updateLastContacted(card.id, new Date());
+    updateCard({ ...card, updatedAt: new Date().toISOString() });
   };
 
   const handleEmail = () => {
@@ -78,8 +78,7 @@ export default function ContactDetailsScreen() {
       Linking.openURL(emailUrl);
     }
     
-    // Update last contacted
-    updateLastContacted(card.id, new Date());
+    updateCard({ ...card, updatedAt: new Date().toISOString() });
   };
 
   const handleSMS = (phone?: string) => {
@@ -90,7 +89,7 @@ export default function ContactDetailsScreen() {
     if (Platform.OS !== 'web') {
       Linking.openURL(smsUrl);
     }
-    updateLastContacted(card.id, new Date());
+    updateCard({ ...card, updatedAt: new Date().toISOString() });
   };
 
   const handleWebsite = () => {
@@ -235,11 +234,11 @@ export default function ContactDetailsScreen() {
           <Text style={styles.company}>{card.company}</Text>
           <Text style={styles.title}>{card.title}</Text>
           
-          {card.lastContacted && (
+          {card.updatedAt && (
             <View style={styles.lastContactedBadge}>
               <Clock size={14} color={Colors.textSecondary} />
               <Text style={styles.lastContactedText}>
-                Last contacted: {format(card.lastContacted, 'MMM d, yyyy')}
+                Last updated: {format(new Date(card.updatedAt), 'MMM d, yyyy')}
               </Text>
             </View>
           )}
@@ -312,17 +311,26 @@ export default function ContactDetailsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Professional Information</Text>
           
-          {(card.specialty || []).length > 0 && (
+          {(Array.isArray(card.specialty) ? card.specialty : []).length > 0 && (
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Specialties:</Text>
-              <Text style={styles.infoValue}>{card.specialty.join(', ')}</Text>
+              <Text style={styles.infoLabel}>Specialty</Text>
+              <Text style={styles.infoValue}>{(Array.isArray(card.specialty) ? card.specialty : []).join(', ')}</Text>
             </View>
           )}
           
-          {(card.languages || []).length > 0 && (
+          {/* Last Updated */}
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Last Updated</Text>
+            <Text style={styles.infoValue}>
+              {card.updatedAt ? new Date(card.updatedAt).toLocaleDateString() : 'Never'}
+            </Text>
+          </View>
+          
+          {/* Languages */}
+          {(Array.isArray(card.languages) ? card.languages : []).length > 0 && (
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Languages:</Text>
-              <Text style={styles.infoValue}>{card.languages.join(', ')}</Text>
+              <Text style={styles.infoLabel}>Languages</Text>
+              <Text style={styles.infoValue}>{(Array.isArray(card.languages) ? card.languages : []).join(', ')}</Text>
             </View>
           )}
         </View>

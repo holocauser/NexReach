@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, StatusBar, SafeAreaView, Alert } from 'react-native';
-import { Search, X, Settings, Star, FileText, Mic } from 'lucide-react-native';
+import { Search, X, Settings, Star, FileText, Mic, File } from 'lucide-react-native';
 import { useCardStore } from '@/store/cardStore';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
@@ -9,6 +9,9 @@ import { tagOptions } from '@/data/mockData';
 import { SafeAreaView as SafeAreaViewRN } from 'react-native-safe-area-context';
 import { filterProviders } from '@/utils/locationUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import FileStorageScreen from '../../components/FileStorageScreen';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 export default function MyCardsScreen() {
   const router = useRouter();
@@ -21,6 +24,8 @@ export default function MyCardsScreen() {
   const [globalFilesTab, setGlobalFilesTab] = useState<'files' | 'voice'>('files');
   const [tagSearch, setTagSearch] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('Orlando'); // Default city
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
   // Sort cards by creation date (newest first) to show scanned cards at the top
   const sortedCards = [...cards].sort((a, b) => 
@@ -77,6 +82,23 @@ export default function MyCardsScreen() {
   };
 
   const popularTags = getPopularTags();
+
+  const handleFileIconPress = (cardId: string) => {
+    setSelectedCardId(cardId);
+    setModalVisible(true);
+  };
+
+  const handleOpenFile = async (url: string) => {
+    const fileInfo = await FileSystem.getInfoAsync(url);
+    if (fileInfo.exists) {
+      try {
+        const sharedFile = await FileSystem.readAsStringAsync(url);
+        await Sharing.shareAsync(sharedFile, { mimeType: 'text/plain' });
+      } catch (error) {
+        console.error('Error sharing file:', error);
+      }
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -174,6 +196,7 @@ export default function MyCardsScreen() {
               onToggleFavorite={toggleFavorite}
               onEdit={handleEdit}
               onAddVoiceNote={handleAddVoiceNote}
+              onFileIconPress={() => handleFileIconPress(item.id)}
             />
           )}
           showsVerticalScrollIndicator={false}
@@ -344,7 +367,7 @@ export default function MyCardsScreen() {
           </View>
         </Modal>
 
-        {/* Files Modal */}
+        {/* Global Files Modal */}
         <Modal
           visible={showFilesModal}
           transparent={true}
@@ -359,60 +382,90 @@ export default function MyCardsScreen() {
                   <X size={24} color={Colors.textPrimary} />
                 </TouchableOpacity>
               </View>
+              
               {/* Tab Switcher */}
-              <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
+              <View style={styles.tabsRow}>
                 <TouchableOpacity
-                  style={[styles.tabButton, globalFilesTab === 'files' && styles.tabButtonActive]}
+                  style={[styles.tabBtn, globalFilesTab === 'files' && styles.tabBtnActive]}
                   onPress={() => setGlobalFilesTab('files')}
                 >
-                  <Text style={[styles.tabButtonText, globalFilesTab === 'files' && styles.tabButtonTextActive]}>Files</Text>
+                  <FileText size={20} color={globalFilesTab === 'files' ? Colors.primary : Colors.textSecondary} />
+                  <Text style={[styles.tabLabel, globalFilesTab === 'files' && styles.tabLabelActive]}>Files</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.tabButton, globalFilesTab === 'voice' && styles.tabButtonActive]}
+                  style={[styles.tabBtn, globalFilesTab === 'voice' && styles.tabBtnActive]}
                   onPress={() => setGlobalFilesTab('voice')}
                 >
-                  <Text style={[styles.tabButtonText, globalFilesTab === 'voice' && styles.tabButtonTextActive]}>Voice Notes</Text>
+                  <Mic size={20} color={globalFilesTab === 'voice' ? Colors.primary : Colors.textSecondary} />
+                  <Text style={[styles.tabLabel, globalFilesTab === 'voice' && styles.tabLabelActive]}>Voice Notes</Text>
                 </TouchableOpacity>
               </View>
-              {/* Tab Content */}
-              {globalFilesTab === 'files' ? (
-                <FlatList
-                  data={cards.filter(card => (card.files && card.files.length))}
-                  keyExtractor={item => item.id}
-                  renderItem={({ item: card }) => (
-                    <View style={styles.fileGroup}>
-                      <Text style={styles.fileGroupTitle}>{card.name}</Text>
-                      {(card.files || []).map((file, idx) => (
-                        <View key={file.url} style={styles.fileItem}>
-                          <FileText size={16} color={Colors.primary} />
-                          <Text style={styles.fileItemText}>{file.name}</Text>
-                        </View>
-                      ))}
+
+              {/* Content */}
+              <FlatList
+                data={globalFilesTab === 'files' 
+                  ? cards.flatMap(card => (card.files || []).map(file => ({ 
+                      ...file, 
+                      cardName: card.name,
+                      type: file.type || 'unknown'
+                    })))
+                  : cards.flatMap(card => (card.voiceNotes || []).map(note => ({ 
+                      id: note.id,
+                      url: note.url,
+                      createdAt: note.createdAt,
+                      cardName: card.name,
+                      name: `Voice Note ${note.id}`,
+                      type: 'audio'
+                    })))
+                }
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.fileCard}
+                    onPress={() => handleOpenFile(item.url)}
+                  >
+                    <View style={styles.fileIconContainer}>
+                      {globalFilesTab === 'files' ? (
+                        <File size={24} color={Colors.primary} />
+                      ) : (
+                        <Mic size={24} color={Colors.primary} />
+                      )}
                     </View>
-                  )}
-                  ListEmptyComponent={<Text style={styles.emptyText}>No files found.</Text>}
-                />
-              ) : (
-                <FlatList
-                  data={cards.filter(card => (card.voiceNotes && card.voiceNotes.length))}
-                  keyExtractor={item => item.id}
-                  renderItem={({ item: card }) => (
-                    <View style={styles.fileGroup}>
-                      <Text style={styles.fileGroupTitle}>{card.name}</Text>
-                      {(card.voiceNotes || []).map((note, idx) => (
-                        <View key={note.id} style={styles.fileItem}>
-                          <Mic size={16} color={Colors.error} />
-                          <Text style={styles.fileItemText}>{note.name || `Voice Note ${idx + 1}`}</Text>
-                        </View>
-                      ))}
+                    <View style={styles.fileInfo}>
+                      <Text style={styles.fileName}>{item.name}</Text>
+                      <Text style={styles.fileMeta}>
+                        {item.cardName} • {new Date(item.createdAt).toLocaleDateString()}
+                      </Text>
                     </View>
-                  )}
-                  ListEmptyComponent={<Text style={styles.emptyText}>No voice notes found.</Text>}
-                />
-              )}
+                    <TouchableOpacity 
+                      onPress={() => handleOpenFile(item.url)}
+                      style={styles.fileAction}
+                    >
+                      <File size={24} color={Colors.primary} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>
+                      No {globalFilesTab === 'files' ? 'files' : 'voice notes'} yet
+                    </Text>
+                    <Text style={styles.emptySubtext}>
+                      Add {globalFilesTab === 'files' ? 'files' : 'voice notes'} to your contacts to see them here
+                    </Text>
+                  </View>
+                }
+                contentContainerStyle={styles.filesList}
+              />
             </View>
           </View>
         </Modal>
+
+        <FileStorageScreen
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          cardId={selectedCardId || ''}
+        />
       </View>
     </SafeAreaView>
   );
@@ -753,43 +806,72 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: Colors.cardBackground,
   },
-  fileGroup: {
-    padding: 16,
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: '#eee',
   },
-  fileGroupTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    marginBottom: 12,
-  },
-  fileItem: {
+  tabBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginRight: 16,
   },
-  fileItemText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
+  tabBtnActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.primary,
+  },
+  tabLabel: {
     marginLeft: 8,
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
-  tabButton: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
+  tabLabelActive: {
+    color: Colors.primary,
+    fontWeight: '600',
   },
-  tabButtonActive: {
-    backgroundColor: Colors.primary,
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  tabButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  fileInfo: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 16,
+    fontWeight: '500',
     color: Colors.textPrimary,
+    marginBottom: 4,
   },
-  tabButtonTextActive: {
-    color: Colors.cardBackground,
+  fileMeta: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  fileAction: {
+    padding: 8,
+  },
+  filesList: {
+    padding: 16,
   },
 });

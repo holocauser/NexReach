@@ -14,6 +14,7 @@ import VoiceNoteModal from './VoiceNoteModal';
 import { VoiceNote } from '@/types';
 import globalStyles, { spacing, typography, shadows } from '@/constants/Styles';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width: screenWidth } = Dimensions.get('window');
 const cardWidth = (screenWidth - spacing.md * 3) / 2;
@@ -24,6 +25,7 @@ interface BusinessCardItemProps {
   onToggleFavorite: (id: string) => void;
   onEdit: (id: string) => void;
   onAddVoiceNote: (id: string) => void;
+  onFileIconPress: () => void;
   viewMode?: 'grid' | 'list';
 }
 
@@ -33,6 +35,7 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
   onToggleFavorite,
   onEdit,
   onAddVoiceNote,
+  onFileIconPress,
   viewMode = 'list',
 }) => {
   
@@ -56,12 +59,10 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
   const router = useRouter();
   
   const handlePhoneCall = () => {
-    const phoneNumber = card.phones[0];
-    if (!phoneNumber) {
-      Alert.alert('No Phone Number', 'This contact does not have a phone number.');
-      return;
+    const phones = card.phones || [];
+    if (phones.length > 0) {
+      Linking.openURL(`tel:${phones[0]}`);
     }
-    Linking.openURL(`tel:${phoneNumber}`);
   };
 
   const handleEmailPress = () => {
@@ -88,13 +89,13 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
         });
     }
   };
-
   const handleSMSPress = () => {
-    const phoneNumber = card.phones[0];
-    if (!phoneNumber) {
+    const phones = card.phones || [];
+    if (phones.length === 0) {
       Alert.alert('No Phone Number', 'This contact does not have a phone number.');
       return;
     }
+    const phoneNumber = phones[0];
     Linking.openURL(`sms:${phoneNumber}`);
   };
 
@@ -163,7 +164,13 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
         };
         const updatedCard = {
           ...card,
-          files: [...(card.files || []), newFile],
+          files: [...(card.files || []), {
+            id: Date.now().toString(),
+            name: result.name as string,
+            type: 'application/octet-stream',
+            url: result.uri as string,
+            createdAt: new Date().toISOString()
+          }],
         };
         updateCard(updatedCard);
         Alert.alert('File attached', 'Your file was successfully attached.');
@@ -229,24 +236,44 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
     setRecordingError(null);
   };
 
-  const saveVoiceNote = () => {
-    if (!recordedUri) return;
-    const newNote = {
-      id: Date.now().toString(),
-      cardId: card.id,
-      recording: recordedUri,
-      duration: 0, // Optionally calculate duration
-      createdAt: new Date(),
-    };
-    const updatedCard = {
-      ...card,
-      voiceNotes: [...(card.voiceNotes || []), newNote],
-    };
-    updateCard(updatedCard);
-    Alert.alert('Voice Note Saved', 'Your voice note was saved.');
-    setShowVoiceModal(false);
-    cancelRecording();
-    // Optionally force refresh: onEdit(card.id);
+  const handleVoiceNoteSave = async (uri: string) => {
+    try {
+      // Ensure the recordings directory exists
+      const recordingsDir = `${FileSystem.documentDirectory}recordings/${card.id}`;
+      const dirInfo = await FileSystem.getInfoAsync(recordingsDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(recordingsDir, { intermediates: true });
+      }
+      // Create a new file name
+      const fileName = `${card.id}_${Date.now()}.m4a`;
+      const newUri = `${recordingsDir}/${fileName}`;
+      // Copy the file to the card's recordings directory
+      await FileSystem.copyAsync({ from: uri, to: newUri });
+      // Add the new voice note to the card's voiceNotes array
+      const newNote = {
+        id: fileName,
+        name: fileName,
+        uri: newUri,
+        date: new Date().toISOString().split('T')[0],
+        createdAt: new Date().toISOString(),
+      };
+      const updatedCard = {
+        ...card,
+        voiceNotes: [...(card.voiceNotes || []), {
+          id: fileName,
+          url: newUri,
+          duration: 0, // You may want to calculate this from the audio file
+          createdAt: new Date().toISOString()
+        }],
+      };
+      updateCard(updatedCard);
+      Alert.alert('Voice Note Saved', 'Your voice note was saved.');
+      setShowVoiceModal(false);
+      cancelRecording();
+    } catch (err) {
+      Alert.alert('Error', 'Failed to save voice note.');
+      console.error('Voice Note: Error saving voice note:', err);
+    }
   };
 
   const playVoiceNote = async (note: any) => {
@@ -358,318 +385,177 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
     };
   }, [sound]);
 
+  const fileCount =
+    (Array.isArray(card.files) ? card.files.length : 0) +
+    (Array.isArray(card.voiceNotes) ? card.voiceNotes.length : 0);
+
   const renderCardContent = () => (
-    <>
-      <View style={styles.header}>
-        <View style={styles.profileSection}>
-          {card.profileImage ? (
-            <Image source={{ uri: card.profileImage }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>{card.name.charAt(0)}</Text>
-            </View>
-          )}
-          <View style={styles.nameSection}>
-            <Text style={styles.name}>{card.name}</Text>
+    <View style={styles.card}>
+      <TouchableOpacity style={styles.cardTapArea} onPress={() => onPress(card.id)} activeOpacity={0.8}>
+        <View style={styles.headerRow}>
+          <View style={styles.avatarCircle}>
+            {card.profileImage ? (
+              <Image source={{ uri: card.profileImage }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>
+                {card.name
+                  ? card.name.split(' ').length > 1
+                    ? card.name.split(' ')[0][0] + card.name.split(' ')[1][0]
+                    : card.name[0]
+                  : '?'}
+              </Text>
+            )}
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.name} numberOfLines={1}>{card.name}</Text>
             {card.title && <Text style={styles.title}>{card.title}</Text>}
             {card.company && <Text style={styles.company}>{card.company}</Text>}
-            {card.tags && card.tags.length > 0 && (
-              <View style={styles.tagsRow}>
-                {card.tags.map((tag, idx) => (
-                  <View key={idx} style={styles.tagBadge}>
-                    <Text style={styles.tagBadgeText}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.iconButton} onPress={() => onToggleFavorite(card.id)}>
+              <Star size={20} color={card.favorited ? Colors.accent : Colors.textSecondary} fill={card.favorited ? Colors.accent : 'none'} />
+            </TouchableOpacity>
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity 
+                style={styles.iconButton} 
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onFileIconPress();
+                }}
+              >
+                <Ionicons name="document-outline" size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+              {fileCount > 0 && (
+                <View style={styles.fileBadge}>
+                  <Text style={styles.fileBadgeText}>{fileCount}</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.favoriteButton}
-            onPress={() => onToggleFavorite(card.id)}
-          >
-            <Star
-              size={24}
-              color={card.favorited ? Colors.favorite : Colors.textLight}
-              fill={card.favorited ? Colors.favorite : 'transparent'}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.fileButton}
-            onPress={() => setShowFilesModal(true)}
-          >
-            <FileText size={20} color={Colors.textSecondary} />
-            {(card.files && card.files.filter(f => f && f.url).length > 0) && (
-              <View style={styles.fileBadge}>
-                <Text style={styles.fileBadgeText}>{card.files.filter(f => f && f.url).length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.contactInfoSection}>
-        {(card.phones && card.phones.length > 0
-          ? card.phones
-          : card.phone
-            ? [card.phone]
-            : []
-        ).map((phone, idx) => (
-          <TouchableOpacity key={idx} style={styles.contactRow} onPress={() => Linking.openURL(`tel:${phone}`)}>
+      </TouchableOpacity>
+      <View style={styles.infoSection}>
+        {card.phones && card.phones.map((phone, idx) => (
+          <View key={phone + idx} style={styles.infoRow}>
             <Phone size={18} color={Colors.primary} />
-            <Text style={styles.contactRowText}>{phone}</Text>
-          </TouchableOpacity>
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${phone}`)}>
+              <Text style={styles.infoText}>{phone}</Text>
+            </TouchableOpacity>
+          </View>
         ))}
         {card.email && (
-          <TouchableOpacity style={styles.contactRow} onPress={handleEmailPress}>
+          <View style={styles.infoRow}>
             <Mail size={18} color={Colors.primary} />
-            <Text style={styles.contactRowText}>{card.email}</Text>
-          </TouchableOpacity>
-        )}
-        {card.website && (
-          <TouchableOpacity style={styles.contactRow} onPress={handleWebsitePress}>
-            <Globe size={18} color={Colors.primary} />
-            <Text style={styles.contactRowText}>{card.website}</Text>
-          </TouchableOpacity>
-        )}
-        {(card.addresses && card.addresses.length > 0
-          ? card.addresses
-          : card.address
-            ? [card.address]
-            : []
-        ).map((address, idx) => (
-          <TouchableOpacity key={idx} style={styles.contactRow} onPress={() => handleAddressPress(address)}>
-            <MapPin size={18} color={Colors.primary} />
-            <Text style={styles.contactRowText}>{address}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity style={styles.actionButton} onPress={() => handlePhoneCall()}>
-          <Phone size={20} color={Colors.primary} />
-          <Text style={styles.actionButtonText}>Call</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => handleSMSPress()}>
-          <MessageCircle size={20} color={Colors.primary} />
-          <Text style={styles.actionButtonText}>Message</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={handleReferPress}>
-          <ArrowRight size={20} color={Colors.primary} />
-          <Text style={styles.actionButtonText}>Refer</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => setShowVoiceModal(true)}>
-          <Mic size={20} color={Colors.primary} />
-          <Text style={styles.actionButtonText}>Record</Text>
-        </TouchableOpacity>
-      </View>
-
-      {card.lastContacted && (
-        <View style={styles.lastContactedContainer}>
-          <Calendar size={16} color={Colors.textSecondary} />
-          <Text style={styles.lastContactedText}>
-            Last contact: {format(card.lastContacted, 'MMM d, yyyy')}
-          </Text>
-        </View>
-      )}
-    </>
-  );
-
-  return (
-          <TouchableOpacity
-      style={[
-        styles.container,
-        viewMode === 'grid' ? styles.gridContainer : styles.listContainer
-      ]}
-      onPress={() => onPress(card.id)}
-    >
-      {renderCardContent()}
-      
-      <Modal
-        visible={showFilesModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowFilesModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Files & Voice Notes</Text>
-              <TouchableOpacity onPress={() => setShowFilesModal(false)} style={styles.modalCloseButton}>
-                <X size={24} color={Colors.textPrimary} />
-          </TouchableOpacity>
-            </View>
-            <View style={styles.tabSwitcher}>
-          <TouchableOpacity
-                style={[styles.tabButton, activeTab === 'files' && styles.tabButtonActive]}
-                onPress={() => setActiveTab('files')}
-          >
-                <Text style={[styles.tabButtonText, activeTab === 'files' && styles.tabButtonTextActive]}>Files</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-                style={[styles.tabButton, activeTab === 'voice' && styles.tabButtonActive]}
-                onPress={() => setActiveTab('voice')}
-              >
-                <Text style={[styles.tabButtonText, activeTab === 'voice' && styles.tabButtonTextActive]}>Voice Notes</Text>
-              </TouchableOpacity>
-            </View>
-            {activeTab === 'files' ? (
-              <>
-                {(card.files || []).length === 0 && <Text style={{ color: Colors.textSecondary, marginBottom: 12 }}>No files attached yet.</Text>}
-                {(card.files || []).map((file, idx) => (
-                  <TouchableOpacity key={file.url} style={styles.fileItem} onPress={() => handleOpenFile(file.url)}>
-                    <FileText size={16} color={Colors.primary} />
-                    <Text style={styles.fileItemText}>{file.name}</Text>
-                  </TouchableOpacity>
-                ))}
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity style={styles.attachFileButton} onPress={handleAddFile}>
-                    <FileText size={20} color={Colors.primary} />
-                    <Text style={styles.attachFileText}>Attach File</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                {(card.voiceNotes || []).length === 0 && <Text style={{ color: Colors.textSecondary, marginBottom: 12 }}>No voice notes yet.</Text>}
-                {(card.voiceNotes || []).map((note, idx) => {
-                  const isCurrent = playingNoteId === note.id;
-                  const durationSec = note.duration ? Math.round(note.duration / 1000) : playbackStatus && isCurrent && playbackStatus.durationMillis ? Math.round(playbackStatus.durationMillis / 1000) : 0;
-                  const positionSec = playbackStatus && isCurrent && playbackStatus.positionMillis ? Math.round(playbackStatus.positionMillis / 1000) : 0;
-                  return (
-                    <View key={note.id} style={styles.fileItem}>
-                      <Mic size={16} color={Colors.error} />
-                      {editingNoteId === note.id ? (
-                        <TextInput
-                          value={editingNoteName}
-                          onChangeText={setEditingNoteName}
-                          onBlur={() => saveNoteName(note.id)}
-                          style={styles.voiceNoteEditInput}
-                          autoFocus
-                        />
-                      ) : (
-                        <Text style={styles.fileItemText}>{note.name || `Voice Note ${idx + 1}`}</Text>
-                      )}
-                      <TouchableOpacity onPress={() => { setEditingNoteId(note.id); setEditingNoteName(note.name || `Voice Note ${idx + 1}`); }} style={styles.editIcon}>
-            <Edit size={16} color={Colors.primary} />
-                      </TouchableOpacity>
-                      <Text style={styles.voiceNoteDuration}>{positionSec}s / {durationSec}s</Text>
-                      {isCurrent && isPlaying ? (
-                        <TouchableOpacity onPress={pauseVoiceNote} style={[styles.playButton, styles.playButtonActive]} disabled={!isCurrent}>
-                          <Text style={styles.playButtonText}>Pause</Text>
-                        </TouchableOpacity>
-                      ) : isCurrent && !isPlaying ? (
-                        <TouchableOpacity onPress={resumeVoiceNote} style={styles.playButton} disabled={!isCurrent}>
-                          <Text style={styles.playButtonText}>Resume</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity onPress={() => playVoiceNote(note)} style={styles.playButton} disabled={isPlaying && !isCurrent}>
-                          <Text style={styles.playButtonText}>Play</Text>
-          </TouchableOpacity>
-                      )}
-                      {isCurrent && (
-                        <TouchableOpacity onPress={stopVoiceNote} style={styles.stopButton}>
-                          <Text style={styles.stopButtonText}>Stop</Text>
-          </TouchableOpacity>
-                      )}
-                      {isCurrent && playbackStatus && playbackStatus.durationMillis ? (
-                        <View style={styles.progressBarContainer}>
-                          <View style={[styles.progressBar, { width: `${(playbackStatus.positionMillis / playbackStatus.durationMillis) * 100}%` }]} />
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </>
-            )}
+            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${card.email}`)}>
+              <Text style={styles.infoText}>{card.email}</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        )}
+        {card.addresses && card.addresses.map((address, idx) => (
+          <View key={address + idx} style={styles.infoRow}>
+            <MapPin size={18} color={Colors.primary} />
+            <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(address)}`)}>
+              <Text style={styles.infoText}>{address}</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {card.website && (
+          <View style={styles.infoRow}>
+            <Globe size={18} color={Colors.primary} />
+            <TouchableOpacity 
+              onPress={() => {
+                const url = card.website?.startsWith('http') ? card.website : `https://${card.website}`;
+                if (url) {
+                  Linking.openURL(url);
+                }
+              }}
+            >
+              <Text style={styles.infoText}>{card.website}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+      <View style={styles.actionsRow}>
+        <TouchableOpacity style={styles.actionPill} onPress={handlePhoneCall}>
+          <Phone size={18} color={Colors.primary} />
+          <Text style={styles.actionLabel}>Call</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionPill} onPress={handleSMSPress}>
+          <MessageCircle size={18} color={Colors.primary} />
+          <Text style={styles.actionLabel}>Message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionPill} onPress={handleReferPress}>
+          <Users size={18} color={Colors.primary} />
+          <Text style={styles.actionLabel}>Refer</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionPill} onPress={() => setShowVoiceModal(true)}>
+          <Mic size={18} color={Colors.primary} />
+          <Text style={styles.actionLabel}>Record</Text>
+        </TouchableOpacity>
+      </View>
       <VoiceNoteModal
         visible={showVoiceModal}
         onClose={() => setShowVoiceModal(false)}
-        onSave={(uri, name, duration) => {
-          const newNote = {
-            id: Date.now().toString(),
-            cardId: card.id,
-            recording: uri,
-            name,
-            duration,
-            createdAt: new Date(),
-          };
-          const updatedCard = {
-            ...card,
-            voiceNotes: [...(card.voiceNotes || []), newNote],
-          };
-          updateCard(updatedCard);
-        }}
+        onSave={handleVoiceNoteSave}
+        cardId={card.id}
       />
-    </TouchableOpacity>
+    </View>
   );
+
+  return renderCardContent();
 };
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     backgroundColor: Colors.cardBackground,
     borderRadius: 16,
-    ...shadows.small,
-  },
-  listContainer: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
-    padding: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    ...shadows.small,
   },
-  gridContainer: {
-    width: cardWidth,
-    marginBottom: spacing.md,
-    padding: spacing.md,
+  cardTapArea: {
+    borderRadius: 16,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  profileSection: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    marginBottom: 4,
   },
-  avatar: {
+  avatarCircle: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    marginRight: spacing.sm,
-  },
-  avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: spacing.sm,
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   avatarText: {
-    color: Colors.cardBackground,
-    fontSize: typography.fontSize.xl,
-    fontFamily: typography.fontFamily.bold,
+    color: Colors.white,
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
   },
-  nameSection: {
+  headerText: {
     flex: 1,
+    minWidth: 0,
   },
   name: {
     fontSize: typography.fontSize.lg,
-    fontFamily: typography.fontFamily.semiBold,
+    fontFamily: typography.fontFamily.bold,
     color: Colors.textPrimary,
-    marginBottom: 2,
   },
   title: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.medium,
     color: Colors.textSecondary,
-    marginBottom: 2,
   },
   company: {
     fontSize: typography.fontSize.sm,
@@ -679,303 +565,69 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginLeft: spacing.sm,
   },
-  favoriteButton: {
-    padding: spacing.xs,
-  },
-  fileButton: {
+  iconButton: {
     padding: spacing.xs,
     marginLeft: spacing.xs,
   },
-  fileBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: Colors.primary,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  fileBadgeText: {
-    color: Colors.cardBackground,
-    fontSize: typography.fontSize.xs,
-    fontFamily: typography.fontFamily.bold,
-  },
-  tagsContainer: {
-    marginBottom: spacing.md,
-  },
-  actionsContainer: {
+  actionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginTop: 12,
+    flexWrap: 'wrap',
+    flexShrink: 1,
   },
-  actionButton: {
+  actionPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.inputBackground,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
     borderRadius: 20,
-  },
-  actionButtonText: {
-    marginLeft: spacing.xs,
-    fontSize: typography.fontSize.xs,
-    fontFamily: typography.fontFamily.medium,
-    color: Colors.primary,
-  },
-  lastContactedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-  },
-  lastContactedText: {
-    marginLeft: spacing.xs,
-    fontSize: typography.fontSize.xs,
-    fontFamily: typography.fontFamily.regular,
-    color: Colors.textSecondary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: Colors.modalOverlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContainer: {
-    backgroundColor: Colors.cardBackground,
-    borderRadius: 16,
-    padding: spacing.lg,
-    width: '90%',
-    maxHeight: '80%',
-    ...shadows.large,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  modalTitle: {
-    fontSize: typography.fontSize.lg,
-    fontFamily: typography.fontFamily.semiBold,
-    color: Colors.textPrimary,
-  },
-  modalCloseButton: {
-    padding: spacing.xs,
-  },
-  fileItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  fileItemText: {
-    fontSize: typography.fontSize.sm,
-    fontFamily: typography.fontFamily.regular,
-    color: Colors.textPrimary,
-    marginLeft: spacing.sm,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  attachFileButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-  },
-  attachFileText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
-    marginLeft: 10,
-  },
-  voiceNoteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-  },
-  voiceNoteText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
-    marginLeft: 10,
-  },
-  tabSwitcher: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    alignItems: 'center',
-  },
-  tabButtonActive: {
-    borderBottomColor: Colors.primary,
-  },
-  tabButtonText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    fontFamily: 'Inter-Medium',
-  },
-  tabButtonTextActive: {
-    color: Colors.primary,
-    fontFamily: 'Inter-SemiBold',
-  },
-  voiceModalContainer: {
-    backgroundColor: Colors.cardBackground,
-    padding: 20,
-    borderRadius: 20,
-    width: '80%',
-    maxHeight: '80%',
-  },
-  voiceRecordControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  recordButton: {
-    padding: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-  },
-  recordButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
-    marginLeft: 10,
-  },
-  cancelButton: {
-    padding: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-  },
-  cancelButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
-    marginLeft: 10,
-  },
-  saveButton: {
-    padding: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-  },
-  saveButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.primary,
-    marginLeft: 10,
-  },
-  playButton: {
-    marginLeft: 10,
+    paddingVertical: 4,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: Colors.primary,
-    borderRadius: 6,
+    marginRight: 4,
+    marginBottom: 4,
   },
-  playButtonText: {
-    color: Colors.cardBackground,
-    fontFamily: 'Inter-Medium',
+  actionLabel: {
+    marginLeft: 4,
+    fontSize: typography.fontSize.xs,
+    color: Colors.primary,
+    fontFamily: typography.fontFamily.medium,
   },
-  stopButton: {
-    marginLeft: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: Colors.error,
-    borderRadius: 6,
+  infoSection: {
+    marginTop: 2,
+    marginBottom: 2,
   },
-  stopButtonText: {
-    color: Colors.cardBackground,
-    fontFamily: 'Inter-Medium',
-  },
-  voiceNoteDuration: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginLeft: 8,
-    marginRight: 8,
-  },
-  progressBarContainer: {
-    height: 4,
-    backgroundColor: Colors.textLight,
-    borderRadius: 2,
-    marginTop: 4,
-    width: 80,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.primary,
-    borderRadius: 2,
-  },
-  playButtonActive: {
-    backgroundColor: Colors.success,
-  },
-  voiceNoteEditInput: {
-    borderBottomWidth: 1,
-    borderColor: Colors.primary,
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textPrimary,
-    marginRight: 8,
-    minWidth: 80,
-  },
-  editIcon: {
-    marginLeft: 6,
-    marginRight: 6,
-  },
-  modalContent: {
-    backgroundColor: Colors.cardBackground,
-    borderRadius: 16,
-    padding: spacing.lg,
-    width: '90%',
-    maxHeight: '80%',
-    ...shadows.large,
-  },
-  contactInfoSection: {
-    marginBottom: spacing.md,
-  },
-  contactRow: {
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
-  contactRowText: {
-    marginLeft: spacing.sm,
+  infoText: {
+    marginLeft: 8,
     fontSize: typography.fontSize.sm,
-    fontFamily: typography.fontFamily.regular,
-    color: '#2563eb',
+    color: Colors.primary,
     textDecorationLine: 'underline',
   },
-  tagsRow: {
-    flexDirection: 'row',
-    marginTop: spacing.xs,
-  },
-  tagBadge: {
+  fileBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: Colors.primary,
-    borderRadius: 10,
-    padding: 4,
-    marginRight: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    paddingHorizontal: 3,
   },
-  tagBadgeText: {
-    color: Colors.cardBackground,
-    fontSize: typography.fontSize.xs,
-    fontFamily: typography.fontFamily.bold,
+  fileBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });
 
