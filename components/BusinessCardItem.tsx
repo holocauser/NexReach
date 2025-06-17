@@ -385,6 +385,14 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
     };
   }, [sound]);
 
+  // Helper function to capitalize names properly
+  const capitalizeName = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   const fileCount =
     (Array.isArray(card.files) ? card.files.length : 0) +
     (Array.isArray(card.voiceNotes) ? card.voiceNotes.length : 0);
@@ -392,28 +400,18 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
   const renderCardContent = () => (
     <View style={styles.card}>
       <TouchableOpacity style={styles.cardTapArea} onPress={() => onPress(card.id)} activeOpacity={0.8}>
-        <View style={styles.headerRow}>
-          <View style={styles.avatarCircle}>
-            {card.profileImage ? (
-              <Image source={{ uri: card.profileImage }} style={styles.avatarImage} />
-            ) : (
-              <Text style={styles.avatarText}>
-                {card.name
-                  ? card.name.split(' ').length > 1
-                    ? card.name.split(' ')[0][0] + card.name.split(' ')[1][0]
-                    : card.name[0]
-                  : '?'}
-              </Text>
-            )}
-          </View>
-          <View style={styles.headerText}>
-            <Text style={styles.name} numberOfLines={1}>{card.name}</Text>
+        {/* Top Section - Header Info and Action Icons */}
+        <View style={styles.topSection}>
+          <View style={styles.headerInfo}>
+            <Text style={styles.name} numberOfLines={1}>
+              {card.name ? capitalizeName(card.name) : 'Unknown'}
+            </Text>
             {card.title && <Text style={styles.title}>{card.title}</Text>}
             {card.company && <Text style={styles.company}>{card.company}</Text>}
           </View>
-          <View style={styles.headerActions}>
+          <View style={styles.topActions}>
             <TouchableOpacity style={styles.iconButton} onPress={() => onToggleFavorite(card.id)}>
-              <Star size={20} color={card.favorited ? Colors.accent : Colors.textSecondary} fill={card.favorited ? Colors.accent : 'none'} />
+              <Star size={16} color={card.favorited ? Colors.accent : Colors.textSecondary} fill={card.favorited ? Colors.accent : 'none'} />
             </TouchableOpacity>
             <View style={{ position: 'relative' }}>
               <TouchableOpacity 
@@ -423,7 +421,7 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
                   onFileIconPress();
                 }}
               >
-                <Ionicons name="document-outline" size={20} color={Colors.textSecondary} />
+                <Ionicons name="document-outline" size={16} color={Colors.textSecondary} />
               </TouchableOpacity>
               {fileCount > 0 && (
                 <View style={styles.fileBadge}>
@@ -433,66 +431,87 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
             </View>
           </View>
         </View>
+
+        {/* Middle Section - Contact Information */}
+        <View style={styles.contactSection}>
+          {card.phone && (
+            <View style={styles.contactRow}>
+              <Phone size={14} color={Colors.textSecondary} />
+              <TouchableOpacity onPress={() => Linking.openURL(`tel:${card.phone}`)}>
+                <Text style={styles.contactText}>{card.phone}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {card.phones && card.phones.map((phone, idx) => (
+            <View key={phone + idx} style={styles.contactRow}>
+              <Phone size={14} color={Colors.textSecondary} />
+              <TouchableOpacity onPress={() => Linking.openURL(`tel:${phone}`)}>
+                <Text style={styles.contactText}>{phone}</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          {card.email && (
+            <View style={styles.contactRow}>
+              <Mail size={14} color={Colors.textSecondary} />
+              <TouchableOpacity onPress={() => Linking.openURL(`mailto:${card.email}`)}>
+                <Text style={styles.contactText}>{card.email}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {card.address && (
+            <View style={styles.contactRow}>
+              <MapPin size={14} color={Colors.textSecondary} />
+              <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(card.address!)}`)}>
+                <Text style={styles.contactText} numberOfLines={1}>{card.address}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {card.addresses && card.addresses.map((address, idx) => (
+            <View key={address + idx} style={styles.contactRow}>
+              <MapPin size={14} color={Colors.textSecondary} />
+              <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(address)}`)}>
+                <Text style={styles.contactText} numberOfLines={1}>{address}</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          {card.website && (
+            <View style={styles.contactRow}>
+              <Globe size={14} color={Colors.textSecondary} />
+              <TouchableOpacity 
+                onPress={() => {
+                  const url = card.website?.startsWith('http') ? card.website : `https://${card.website}`;
+                  if (url) {
+                    Linking.openURL(url);
+                  }
+                }}
+              >
+                <Text style={styles.contactText} numberOfLines={1}>{card.website}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Bottom Section - Action Buttons */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity style={styles.actionPill} onPress={handlePhoneCall}>
+            <Phone size={14} color={Colors.success} />
+            <Text style={[styles.actionLabel, { color: Colors.success }]}>Call</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionPill} onPress={handleSMSPress}>
+            <MessageCircle size={14} color={Colors.info} />
+            <Text style={[styles.actionLabel, { color: Colors.info }]}>Message</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionPill} onPress={handleReferPress}>
+            <Users size={14} color={Colors.primary} />
+            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Refer</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionPill} onPress={() => setShowVoiceModal(true)}>
+            <Mic size={14} color={Colors.error} />
+            <Text style={[styles.actionLabel, { color: Colors.error }]}>Record</Text>
+          </TouchableOpacity>
+        </View>
       </TouchableOpacity>
-      <View style={styles.infoSection}>
-        {card.phones && card.phones.map((phone, idx) => (
-          <View key={phone + idx} style={styles.infoRow}>
-            <Phone size={18} color={Colors.primary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${phone}`)}>
-              <Text style={styles.infoText}>{phone}</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-        {card.email && (
-          <View style={styles.infoRow}>
-            <Mail size={18} color={Colors.primary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${card.email}`)}>
-              <Text style={styles.infoText}>{card.email}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {card.addresses && card.addresses.map((address, idx) => (
-          <View key={address + idx} style={styles.infoRow}>
-            <MapPin size={18} color={Colors.primary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(address)}`)}>
-              <Text style={styles.infoText}>{address}</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-        {card.website && (
-          <View style={styles.infoRow}>
-            <Globe size={18} color={Colors.primary} />
-            <TouchableOpacity 
-              onPress={() => {
-                const url = card.website?.startsWith('http') ? card.website : `https://${card.website}`;
-                if (url) {
-                  Linking.openURL(url);
-                }
-              }}
-            >
-              <Text style={styles.infoText}>{card.website}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-      <View style={styles.actionsRow}>
-        <TouchableOpacity style={styles.actionPill} onPress={handlePhoneCall}>
-          <Phone size={18} color={Colors.primary} />
-          <Text style={styles.actionLabel}>Call</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionPill} onPress={handleSMSPress}>
-          <MessageCircle size={18} color={Colors.primary} />
-          <Text style={styles.actionLabel}>Message</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionPill} onPress={handleReferPress}>
-          <Users size={18} color={Colors.primary} />
-          <Text style={styles.actionLabel}>Refer</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionPill} onPress={() => setShowVoiceModal(true)}>
-          <Mic size={18} color={Colors.primary} />
-          <Text style={styles.actionLabel}>Record</Text>
-        </TouchableOpacity>
-      </View>
+
       <VoiceNoteModal
         visible={showVoiceModal}
         onClose={() => setShowVoiceModal(false)}
@@ -508,7 +527,7 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.cardBackground,
-    borderRadius: 16,
+    borderRadius: 12,
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     paddingVertical: spacing.md,
@@ -516,34 +535,15 @@ const styles = StyleSheet.create({
     ...shadows.small,
   },
   cardTapArea: {
-    borderRadius: 16,
+    borderRadius: 12,
   },
-  headerRow: {
+  topSection: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
-  avatarCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  avatarText: {
-    color: Colors.white,
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-  },
-  headerText: {
+  headerInfo: {
     flex: 1,
     minWidth: 0,
   },
@@ -551,18 +551,20 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontFamily: typography.fontFamily.bold,
     color: Colors.textPrimary,
+    marginBottom: spacing.xs,
   },
   title: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.medium,
     color: Colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   company: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
-  headerActions: {
+  topActions: {
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: spacing.sm,
@@ -571,61 +573,62 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
     marginLeft: spacing.xs,
   },
+  contactSection: {
+    marginBottom: spacing.sm,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  contactText: {
+    marginLeft: spacing.xs,
+    fontSize: typography.fontSize.sm,
+    color: Colors.primary,
+    textDecorationLine: 'underline',
+    flex: 1,
+  },
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginTop: 12,
-    flexWrap: 'wrap',
-    flexShrink: 1,
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
   actionPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.inputBackground,
-    borderRadius: 20,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    marginRight: 4,
-    marginBottom: 4,
+    borderRadius: 16,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    flex: 1,
+    marginHorizontal: spacing.xs,
+    justifyContent: 'center',
   },
   actionLabel: {
-    marginLeft: 4,
+    marginLeft: spacing.xs,
     fontSize: typography.fontSize.xs,
-    color: Colors.primary,
     fontFamily: typography.fontFamily.medium,
-  },
-  infoSection: {
-    marginTop: 2,
-    marginBottom: 2,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  infoText: {
-    marginLeft: 8,
-    fontSize: typography.fontSize.sm,
-    color: Colors.primary,
-    textDecorationLine: 'underline',
   },
   fileBadge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: -2,
+    right: -2,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
-    paddingHorizontal: 3,
+    paddingHorizontal: 2,
   },
   fileBadgeText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '700',
     textAlign: 'center',
   },

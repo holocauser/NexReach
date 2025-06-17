@@ -149,8 +149,25 @@ export default function FileStorageScreen({ visible, onClose, cardId }: FileStor
       const uri = recording.getURI();
       if (uri) {
         const recordingsDir = `${FileSystem.documentDirectory}recordings/${cardId}`;
-        const newUri = `${recordingsDir}/${new Date().toISOString()}.m4a`;
+        const fileName = `${cardId}_${Date.now()}.m4a`;
+        const newUri = `${recordingsDir}/${fileName}`;
         await FileSystem.moveAsync({ from: uri, to: newUri });
+        
+        // Add to card store
+        const card = getCardById(cardId);
+        if (card) {
+          const updatedCard = {
+            ...card,
+            voiceNotes: [...(card.voiceNotes || []), {
+              id: fileName,
+              url: newUri,
+              duration: 0,
+              createdAt: new Date().toISOString()
+            }],
+          };
+          updateCard(updatedCard);
+        }
+        
         loadRecordings();
       }
     } catch (error) {
@@ -181,7 +198,21 @@ export default function FileStorageScreen({ visible, onClose, cardId }: FileStor
     try {
       const recordingsDir = `${FileSystem.documentDirectory}recordings/${cardId}`;
       await FileSystem.deleteAsync(`${recordingsDir}/${id}`);
-      loadRecordings();
+      
+      // Update local state
+      setRecordings(prev => prev.filter(rec => rec.id !== id));
+      
+      // Update card store - remove from voiceNotes array
+      const card = getCardById(cardId);
+      if (card) {
+        const updatedCard = {
+          ...card,
+          voiceNotes: (card.voiceNotes || []).filter(note => note.id !== id)
+        };
+        updateCard(updatedCard);
+      }
+      
+      Alert.alert('Success', 'Recording deleted successfully');
     } catch (error) {
       Alert.alert('Error', 'Failed to delete recording');
     }

@@ -254,10 +254,10 @@ export default function DashboardScreen() {
           </View>
         )}
         
-        {cards.filter(c => c.tags.includes('Spanish-speaking')).length > 0 && (
+        {cards.filter(c => (c.tags || []).includes('Spanish-speaking')).length > 0 && (
           <View style={styles.suggestionCard}>
             <Text style={styles.suggestionText}>
-              You have {cards.filter(c => c.tags.includes('Spanish-speaking')).length} Spanish-speaking contacts. Consider expanding your bilingual network for better client service.
+              You have {cards.filter(c => (c.tags || []).includes('Spanish-speaking')).length} Spanish-speaking contacts. Consider expanding your bilingual network for better client service.
             </Text>
           </View>
         )}

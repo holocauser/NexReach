@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, StatusBar, SafeAreaView, Alert } from 'react-native';
-import { Search, X, Settings, Star, FileText, Mic, File } from 'lucide-react-native';
+import { Search, X, Settings, Star, FileText, Mic, File, Trash2 } from 'lucide-react-native';
 import { useCardStore } from '@/store/cardStore';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
@@ -100,6 +100,77 @@ export default function MyCardsScreen() {
     }
   };
 
+  const handleDeleteFile = async (item: any, type: 'file' | 'voice') => {
+    Alert.alert(
+      'Delete File',
+      `Are you sure you want to delete "${item.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { cards, updateCard, getCardById } = useCardStore.getState();
+              
+              // Find the card that contains this file/voice note
+              const card = cards.find(c => 
+                type === 'file' 
+                  ? (c.files || []).some(f => f.id === item.id)
+                  : (c.voiceNotes || []).some(v => v.id === item.id)
+              );
+              
+              if (!card) {
+                Alert.alert('Error', 'Could not find the associated card');
+                return;
+              }
+
+              // Delete from file system - handle both possible path structures
+              try {
+                // Try the direct URL first
+                await FileSystem.deleteAsync(item.url);
+              } catch (fileError) {
+                // If that fails, try constructing the path based on type
+                try {
+                  if (type === 'file') {
+                    const filesDir = `${FileSystem.documentDirectory}files/${card.id}`;
+                    await FileSystem.deleteAsync(`${filesDir}/${item.id}`);
+                  } else {
+                    const recordingsDir = `${FileSystem.documentDirectory}recordings/${card.id}`;
+                    await FileSystem.deleteAsync(`${recordingsDir}/${item.id}`);
+                  }
+                } catch (pathError) {
+                  console.log('File not found in file system, but will remove from store:', pathError);
+                  // Continue with store update even if file doesn't exist
+                }
+              }
+
+              // Update card store
+              if (type === 'file') {
+                const updatedCard = {
+                  ...card,
+                  files: (card.files || []).filter(f => f.id !== item.id)
+                };
+                updateCard(updatedCard);
+              } else {
+                const updatedCard = {
+                  ...card,
+                  voiceNotes: (card.voiceNotes || []).filter(v => v.id !== item.id)
+                };
+                updateCard(updatedCard);
+              }
+
+              Alert.alert('Success', 'File deleted successfully');
+            } catch (error) {
+              console.error('Error deleting file:', error);
+              Alert.alert('Error', 'Failed to delete file');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -131,9 +202,15 @@ export default function MyCardsScreen() {
                 onPress={() => setShowFilesModal(true)}
               >
                 <FileText size={20} color={Colors.textSecondary} />
-                {cards && cards.reduce((sum, card) => sum + (card.files ? card.files.length : 0), 0) > 0 && (
+                {cards && cards.reduce((sum, card) => 
+                  sum + 
+                  (card.files ? card.files.length : 0) + 
+                  (card.voiceNotes ? card.voiceNotes.length : 0), 0) > 0 && (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{cards.reduce((sum, card) => sum + (card.files ? card.files.length : 0), 0)}</Text>
+                    <Text style={styles.badgeText}>{cards.reduce((sum, card) => 
+                      sum + 
+                      (card.files ? card.files.length : 0) + 
+                      (card.voiceNotes ? card.voiceNotes.length : 0), 0)}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -420,30 +497,40 @@ export default function MyCardsScreen() {
                 }
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.fileCard}
-                    onPress={() => handleOpenFile(item.url)}
-                  >
-                    <View style={styles.fileIconContainer}>
-                      {globalFilesTab === 'files' ? (
-                        <File size={24} color={Colors.primary} />
-                      ) : (
-                        <Mic size={24} color={Colors.primary} />
-                      )}
-                    </View>
-                    <View style={styles.fileInfo}>
-                      <Text style={styles.fileName}>{item.name}</Text>
-                      <Text style={styles.fileMeta}>
-                        {item.cardName} • {new Date(item.createdAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <TouchableOpacity 
+                  <View style={styles.fileCard}>
+                    <TouchableOpacity
+                      style={styles.fileContent}
                       onPress={() => handleOpenFile(item.url)}
-                      style={styles.fileAction}
                     >
-                      <File size={24} color={Colors.primary} />
+                      <View style={styles.fileIconContainer}>
+                        {globalFilesTab === 'files' ? (
+                          <File size={24} color={Colors.primary} />
+                        ) : (
+                          <Mic size={24} color={Colors.primary} />
+                        )}
+                      </View>
+                      <View style={styles.fileInfo}>
+                        <Text style={styles.fileName}>{item.name}</Text>
+                        <Text style={styles.fileMeta}>
+                          {item.cardName} • {new Date(item.createdAt).toLocaleDateString()}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
-                  </TouchableOpacity>
+                    <View style={styles.fileActions}>
+                      <TouchableOpacity 
+                        onPress={() => handleOpenFile(item.url)}
+                        style={styles.fileAction}
+                      >
+                        <File size={20} color={Colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => handleDeleteFile(item, globalFilesTab === 'files' ? 'file' : 'voice')}
+                        style={styles.fileAction}
+                      >
+                        <Trash2 size={20} color={Colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 )}
                 ListEmptyComponent={
                   <View style={styles.emptyContainer}>
@@ -836,6 +923,7 @@ const styles = StyleSheet.create({
   fileCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -845,6 +933,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  fileContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   fileIconContainer: {
     width: 40,
@@ -867,6 +960,10 @@ const styles = StyleSheet.create({
   fileMeta: {
     fontSize: 14,
     color: Colors.textSecondary,
+  },
+  fileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   fileAction: {
     padding: 8,
