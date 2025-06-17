@@ -399,118 +399,138 @@ const BusinessCardItem: React.FC<BusinessCardItemProps> = ({
 
   const renderCardContent = () => (
     <View style={styles.card}>
-      <TouchableOpacity style={styles.cardTapArea} onPress={() => onPress(card.id)} activeOpacity={0.8}>
-        {/* Top Section - Header Info and Action Icons */}
-        <View style={styles.topSection}>
-          <View style={styles.headerInfo}>
-            <Text style={styles.name} numberOfLines={1}>
-              {card.name ? capitalizeName(card.name) : 'Unknown'}
+      {/* Top Section - Header Info and Action Icons */}
+      <View style={styles.topSection}>
+        {/* Avatar - Clickable */}
+        <TouchableOpacity 
+          style={styles.avatarContainer} 
+          onPress={() => onPress(card.id)} 
+          activeOpacity={0.8}
+        >
+          {card.profileImage ? (
+            <Image source={{ uri: card.profileImage }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>
+              {card.name ? (card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')) : '?'}
             </Text>
-            {card.title && <Text style={styles.title}>{card.title}</Text>}
-            {card.company && <Text style={styles.company}>{card.company}</Text>}
-          </View>
-          <View style={styles.topActions}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => onToggleFavorite(card.id)}>
-              <Star size={16} color={card.favorited ? Colors.accent : Colors.textSecondary} fill={card.favorited ? Colors.accent : 'none'} />
+          )}
+        </TouchableOpacity>
+        
+        {/* Name and Info - Clickable */}
+        <TouchableOpacity 
+          style={styles.headerInfo} 
+          onPress={() => onPress(card.id)} 
+          activeOpacity={0.8}
+        >
+          <Text style={styles.name} numberOfLines={1}>
+            {card.name ? capitalizeName(card.name) : 'Unknown'}
+          </Text>
+          {card.company && <Text style={styles.company}>{card.company}</Text>}
+          {card.title && <Text style={styles.title}>{card.title}</Text>}
+        </TouchableOpacity>
+        
+        {/* Action Buttons - Not clickable for card opening */}
+        <View style={styles.topActions}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => onToggleFavorite(card.id)}>
+            <Star size={16} color={card.favorited ? Colors.accent : Colors.textSecondary} fill={card.favorited ? Colors.accent : 'none'} />
+          </TouchableOpacity>
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity 
+              style={styles.iconButton} 
+              onPress={(e) => {
+                e.stopPropagation();
+                onFileIconPress();
+              }}
+            >
+              <Ionicons name="document-outline" size={16} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <View style={{ position: 'relative' }}>
-              <TouchableOpacity 
-                style={styles.iconButton} 
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onFileIconPress();
-                }}
-              >
-                <Ionicons name="document-outline" size={16} color={Colors.textSecondary} />
-              </TouchableOpacity>
-              {fileCount > 0 && (
-                <View style={styles.fileBadge}>
-                  <Text style={styles.fileBadgeText}>{fileCount}</Text>
-                </View>
-              )}
-            </View>
+            {fileCount > 0 && (
+              <View style={styles.fileBadge}>
+                <Text style={styles.fileBadgeText}>{fileCount}</Text>
+              </View>
+            )}
           </View>
         </View>
+      </View>
 
-        {/* Middle Section - Contact Information */}
-        <View style={styles.contactSection}>
-          {card.phone && (
-            <View style={styles.contactRow}>
-              <Phone size={14} color={Colors.textSecondary} />
-              <TouchableOpacity onPress={() => Linking.openURL(`tel:${card.phone}`)}>
-                <Text style={styles.contactText}>{card.phone}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {card.phones && card.phones.map((phone, idx) => (
-            <View key={phone + idx} style={styles.contactRow}>
-              <Phone size={14} color={Colors.textSecondary} />
-              <TouchableOpacity onPress={() => Linking.openURL(`tel:${phone}`)}>
-                <Text style={styles.contactText}>{phone}</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-          {card.email && (
-            <View style={styles.contactRow}>
-              <Mail size={14} color={Colors.textSecondary} />
-              <TouchableOpacity onPress={() => Linking.openURL(`mailto:${card.email}`)}>
-                <Text style={styles.contactText}>{card.email}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {card.address && (
-            <View style={styles.contactRow}>
-              <MapPin size={14} color={Colors.textSecondary} />
-              <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(card.address!)}`)}>
-                <Text style={styles.contactText} numberOfLines={1}>{card.address}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {card.addresses && card.addresses.map((address, idx) => (
-            <View key={address + idx} style={styles.contactRow}>
-              <MapPin size={14} color={Colors.textSecondary} />
-              <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(address)}`)}>
-                <Text style={styles.contactText} numberOfLines={1}>{address}</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-          {card.website && (
-            <View style={styles.contactRow}>
-              <Globe size={14} color={Colors.textSecondary} />
-              <TouchableOpacity 
-                onPress={() => {
-                  const url = card.website?.startsWith('http') ? card.website : `https://${card.website}`;
-                  if (url) {
-                    Linking.openURL(url);
-                  }
-                }}
-              >
-                <Text style={styles.contactText} numberOfLines={1}>{card.website}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+      {/* Middle Section - Contact Information */}
+      <View style={styles.contactSection}>
+        {card.phone && (
+          <View style={styles.contactRow}>
+            <Phone size={14} color={Colors.textSecondary} />
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${card.phone}`)}>
+              <Text style={styles.contactText}>{card.phone}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {card.phones && card.phones.map((phone, idx) => (
+          <View key={phone + idx} style={styles.contactRow}>
+            <Phone size={14} color={Colors.textSecondary} />
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${phone}`)}>
+              <Text style={styles.contactText}>{phone}</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {card.email && (
+          <View style={styles.contactRow}>
+            <Mail size={14} color={Colors.textSecondary} />
+            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${card.email}`)}>
+              <Text style={styles.contactText}>{card.email}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {card.address && (
+          <View style={styles.contactRow}>
+            <MapPin size={14} color={Colors.textSecondary} />
+            <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(card.address!)}`)}>
+              <Text style={styles.contactText} numberOfLines={1}>{card.address}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {card.addresses && card.addresses.map((address, idx) => (
+          <View key={address + idx} style={styles.contactRow}>
+            <MapPin size={14} color={Colors.textSecondary} />
+            <TouchableOpacity onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(address)}`)}>
+              <Text style={styles.contactText} numberOfLines={1}>{address}</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        {card.website && (
+          <View style={styles.contactRow}>
+            <Globe size={14} color={Colors.textSecondary} />
+            <TouchableOpacity 
+              onPress={() => {
+                const url = card.website?.startsWith('http') ? card.website : `https://${card.website}`;
+                if (url) {
+                  Linking.openURL(url);
+                }
+              }}
+            >
+              <Text style={styles.contactText} numberOfLines={1}>{card.website}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
 
-        {/* Bottom Section - Action Buttons */}
-        <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionPill} onPress={handlePhoneCall}>
-            <Phone size={14} color={Colors.success} />
-            <Text style={[styles.actionLabel, { color: Colors.success }]}>Call</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionPill} onPress={handleSMSPress}>
-            <MessageCircle size={14} color={Colors.info} />
-            <Text style={[styles.actionLabel, { color: Colors.info }]}>Message</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionPill} onPress={handleReferPress}>
-            <Users size={14} color={Colors.primary} />
-            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Refer</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionPill} onPress={() => setShowVoiceModal(true)}>
-            <Mic size={14} color={Colors.error} />
-            <Text style={[styles.actionLabel, { color: Colors.error }]}>Record</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
+      {/* Bottom Section - Action Buttons */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity style={styles.actionPill} onPress={handlePhoneCall}>
+          <Phone size={14} color={Colors.success} />
+          <Text style={[styles.actionLabel, { color: Colors.success }]}>Call</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionPill} onPress={handleSMSPress}>
+          <MessageCircle size={14} color={Colors.info} />
+          <Text style={[styles.actionLabel, { color: Colors.info }]}>Message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionPill} onPress={handleReferPress}>
+          <Users size={14} color={Colors.primary} />
+          <Text style={[styles.actionLabel, { color: Colors.primary }]}>Refer</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionPill} onPress={() => setShowVoiceModal(true)}>
+          <Mic size={14} color={Colors.error} />
+          <Text style={[styles.actionLabel, { color: Colors.error }]}>Record</Text>
+        </TouchableOpacity>
+      </View>
 
       <VoiceNoteModal
         visible={showVoiceModal}
@@ -543,26 +563,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
+  avatarContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.inputBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 28,
+  },
+  avatarText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+  },
   headerInfo: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
   },
   name: {
     fontSize: typography.fontSize.lg,
     fontFamily: typography.fontFamily.bold,
     color: Colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  title: {
-    fontSize: typography.fontSize.sm,
-    fontFamily: typography.fontFamily.medium,
-    color: Colors.textSecondary,
-    marginBottom: spacing.xs,
+    marginBottom: 0,
   },
   company: {
     fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: Colors.textSecondary,
+    marginBottom: 0,
+    marginTop: 2,
+  },
+  title: {
+    fontSize: typography.fontSize.xs,
     fontFamily: typography.fontFamily.regular,
     color: Colors.textSecondary,
+    opacity: 0.6,
+    marginTop: 2,
   },
   topActions: {
     flexDirection: 'row',

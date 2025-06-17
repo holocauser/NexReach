@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { ArrowRight, DollarSign, CalendarDays, CreditCard as Edit } from 'lucide-react-native';
 import { Referral } from '@/types';
 import Colors from '@/constants/Colors';
@@ -39,9 +39,13 @@ const ReferralItem: React.FC<ReferralItemProps> = ({ referral, onPress, onEdit }
         <View style={styles.header}>
           <View style={styles.referralFlow}>
             <View style={styles.contactBubble}>
-              <Text style={styles.contactInitial}>
-                {referrer?.name.charAt(0) || '?'}
-              </Text>
+              {referrer?.profileImage ? (
+                <Image source={{ uri: referrer.profileImage }} style={styles.contactImage} />
+              ) : (
+                <Text style={styles.contactInitial}>
+                  {referrer?.name.charAt(0) || '?'}
+                </Text>
+              )}
             </View>
             
             <View style={styles.arrowContainer}>
@@ -49,9 +53,13 @@ const ReferralItem: React.FC<ReferralItemProps> = ({ referral, onPress, onEdit }
             </View>
             
             <View style={styles.contactBubble}>
-              <Text style={styles.contactInitial}>
-                {recipient?.name.charAt(0) || '?'}
-              </Text>
+              {recipient?.profileImage ? (
+                <Image source={{ uri: recipient.profileImage }} style={styles.contactImage} />
+              ) : (
+                <Text style={styles.contactInitial}>
+                  {recipient?.name.charAt(0) || '?'}
+                </Text>
+              )}
             </View>
           </View>
           
@@ -135,16 +143,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contactBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   contactInitial: {
     color: Colors.white,
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: 'Inter-Medium',
   },
   arrowContainer: {
@@ -221,6 +229,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: Colors.primary,
     marginLeft: 4,
+  },
+  contactImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
 });
 

@@ -18,6 +18,7 @@ export interface BusinessCard {
   profileImage?: string;
   cardImage?: string;
   favorited?: boolean;
+  lastContacted?: Date;
   files?: Array<{
     id: string;
     name: string;

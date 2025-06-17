@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { TrendingUp, Users, Clock, Lightbulb, Calendar, Star, Phone, Mail } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useReferralStore } from '@/store/referralStore';
@@ -121,6 +121,15 @@ export default function DashboardScreen() {
           
           {followUpCards.map((card, index) => (
             <View key={index} style={styles.followUpItem}>
+              <View style={styles.followUpAvatar}>
+                {card.profileImage ? (
+                  <Image source={{ uri: card.profileImage }} style={styles.followUpAvatarImage} />
+                ) : (
+                  <Text style={styles.followUpAvatarText}>
+                    {card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')}
+                  </Text>
+                )}
+              </View>
               <View style={styles.followUpInfo}>
                 <Text style={styles.followUpName}>{card.name}</Text>
                 <Text style={styles.followUpCompany}>{card.company}</Text>
@@ -153,9 +162,13 @@ export default function DashboardScreen() {
           {recentCards.map((card, index) => (
             <View key={index} style={styles.recentItem}>
               <View style={styles.recentAvatar}>
-                <Text style={styles.recentAvatarText}>
-                  {card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')}
-                </Text>
+                {card.profileImage ? (
+                  <Image source={{ uri: card.profileImage }} style={styles.recentAvatarImage} />
+                ) : (
+                  <Text style={styles.recentAvatarText}>
+                    {card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')}
+                  </Text>
+                )}
               </View>
               <View style={styles.recentInfo}>
                 <Text style={styles.recentName}>{card.name}</Text>
@@ -179,6 +192,15 @@ export default function DashboardScreen() {
               <View key={index} style={styles.rankItem}>
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankNumber}>{index + 1}</Text>
+                </View>
+                <View style={styles.rankAvatar}>
+                  {card?.profileImage ? (
+                    <Image source={{ uri: card.profileImage }} style={styles.rankAvatarImage} />
+                  ) : (
+                    <Text style={styles.rankAvatarText}>
+                      {card?.name ? (card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')) : '?'}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.rankInfo}>
                   <Text style={styles.rankName}>{card?.name || 'Unknown'}</Text>
@@ -206,6 +228,15 @@ export default function DashboardScreen() {
               <View key={index} style={styles.rankItem}>
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankNumber}>{index + 1}</Text>
+                </View>
+                <View style={styles.rankAvatar}>
+                  {card?.profileImage ? (
+                    <Image source={{ uri: card.profileImage }} style={styles.rankAvatarImage} />
+                  ) : (
+                    <Text style={styles.rankAvatarText}>
+                      {card?.name ? (card.name.charAt(0) + (card.name.split(' ')[1]?.charAt(0) || '')) : '?'}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.rankInfo}>
                   <Text style={styles.rankName}>{card?.name || 'Unknown'}</Text>
@@ -375,6 +406,25 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: Colors.warning,
   },
+  followUpAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.warning,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  followUpAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
+  followUpAvatarText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+  },
   followUpInfo: {
     flex: 1,
   },
@@ -416,17 +466,22 @@ const styles = StyleSheet.create({
     borderLeftColor: Colors.success,
   },
   recentAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.success,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
+  recentAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
   recentAvatarText: {
     color: Colors.white,
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Inter-Medium',
   },
   recentInfo: {
@@ -469,6 +524,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
     color: Colors.white,
+  },
+  rankAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  rankAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
+  rankAvatarText: {
+    color: Colors.textPrimary,
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
   },
   rankInfo: {
     flex: 1,
