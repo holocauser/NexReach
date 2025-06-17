@@ -10,6 +10,8 @@ import { useEventStore } from '@/store/eventStore';
 import { useUserStore } from '@/store/userStore';
 import { format } from 'date-fns';
 
+const TAG_OPTIONS = ['Networking', 'Tech', 'Business', 'Startup', 'Workshop', 'Social'];
+
 const CreateEventScreen = () => {
   const router = useRouter();
   const { addEvent } = useEventStore();
@@ -27,6 +29,7 @@ const CreateEventScreen = () => {
   const [price, setPrice] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   // Validation
   const validate = () => {
@@ -88,7 +91,7 @@ const CreateEventScreen = () => {
       organizer: profile.name,
       organizerAvatar: profile.avatar,
       image: image || undefined,
-      tags: [], // TODO: Add tag selection
+      tags: selectedTags,
       price: isPaid ? parseFloat(price) : null,
     };
 
@@ -229,6 +232,33 @@ const CreateEventScreen = () => {
             />
           </View>
         )}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Tags</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {TAG_OPTIONS.map(tag => (
+              <TouchableOpacity
+                key={tag}
+                style={{
+                  backgroundColor: selectedTags.includes(tag) ? Colors.primary : '#eee',
+                  borderRadius: 16,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  marginRight: 8,
+                  marginBottom: 8,
+                }}
+                onPress={() => {
+                  setSelectedTags(prev =>
+                    prev.includes(tag)
+                      ? prev.filter(t => t !== tag)
+                      : [...prev, tag]
+                  );
+                }}
+              >
+                <Text style={{ color: selectedTags.includes(tag) ? '#fff' : Colors.textPrimary }}>{tag}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
         <View style={styles.formGroup}>
           <Text style={styles.label}>Flyer / Image</Text>
           <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>

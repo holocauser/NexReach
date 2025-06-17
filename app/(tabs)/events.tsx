@@ -324,7 +324,7 @@ export default function EventsScreen() {
           'Please log in to purchase tickets.',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Log In', onPress: () => {/* TODO: Navigate to login */} }
+            { text: 'Log In', onPress: () => router.push('/auth') }
           ]
         );
         return;
@@ -470,7 +470,7 @@ export default function EventsScreen() {
                 ) : (
                   <TouchableOpacity
                     style={styles.loginPrompt}
-                    onPress={() => {/* TODO: Navigate to login */}}
+                    onPress={() => router.push('/auth')}
                   >
                     <Text style={styles.loginPromptText}>
                       Log in to leave a comment
