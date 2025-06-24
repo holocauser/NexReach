@@ -74,4 +74,16 @@ create trigger handle_updated_at
 drop trigger if exists handle_updated_at on public.profiles;
 create trigger handle_updated_at
   before update on public.profiles
-  for each row execute procedure public.handle_updated_at(); 
+  for each row execute procedure public.handle_updated_at();
+
+-- 4. Function to decrement attending_count for events
+create or replace function public.decrement_attending_count(event_id uuid)
+returns void
+language plpgsql
+security definer set search_path = public as $$
+begin
+  update public.events 
+  set attending_count = greatest(0, attending_count - 1)
+  where id = event_id;
+end;
+$$; 

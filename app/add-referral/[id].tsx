@@ -67,7 +67,12 @@ export default function AddReferralScreen() {
     }
 
     // Get current user ID
-    const userId = user?.id || profile?.id || 'default-user-id';
+    const userId = user?.id || profile?.id;
+    
+    if (!userId) {
+      Alert.alert('Authentication Error', 'Please sign in to log referrals.');
+      return;
+    }
 
     const newReferral: Referral = {
       id: Crypto.randomUUID(),

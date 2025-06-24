@@ -60,7 +60,12 @@ export default function ContactDetailsScreen() {
   }
 
   // Get current user ID
-  const userId = user?.id || profile?.id || 'default-user-id';
+  const userId = user?.id || profile?.id;
+  
+  // If no user ID is available, we can't proceed with referral calculations
+  if (!userId) {
+    console.log('No user ID available for referral calculations');
+  }
 
   // Calculate referrals in user-centric approach
   const referralsSent = referrals.filter(ref => 

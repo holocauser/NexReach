@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { Ticket as TicketIcon, Clock, MapPin } from 'lucide-react-native';
 import { format } from 'date-fns';
@@ -20,92 +20,105 @@ type TicketWithEvent = Ticket & {
   events: Event | null;
 };
 
-// Moved mockEvents outside the component for performance
-const mockEvents = [
-  { id: '550e8400-e29b-41d4-a716-446655440001', time: '6:00 PM - 9:00 PM' },
-  { id: '550e8400-e29b-41d4-a716-446655440002', time: '8:00 AM - 5:00 PM' },
-  { id: '550e8400-e29b-41d4-a716-446655440003', time: '7:00 PM - 10:00 PM' },
-  { id: '550e8400-e29b-41d4-a716-446655440004', time: '9:00 AM - 4:00 PM' },
-  { id: '550e8400-e29b-41d4-a716-446655440005', time: '7:00 PM - 9:00 PM' },
-  { id: '550e8400-e29b-41d4-a716-446655440006', time: '6:00 PM - 9:00 PM' },
-];
-
 const MyTicketsScreen = () => {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { user } = useAuth();
   const [tickets, setTickets] = useState<TicketWithEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchTickets = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from('tickets')
-          .select(
-            `
-            *,
-            events (*)
+  const fetchTickets = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select(
           `
-          )
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        
-        if (data) {
-          setTickets(data as TicketWithEvent[]);
-        }
-      } catch (error) {
-        console.error('Error fetching tickets:', error);
-      } finally {
-        setLoading(false);
+          *,
+          events (*)
+        `
+        )
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data) {
+        setTickets(data as TicketWithEvent[]);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchTickets();
   }, [user]);
 
-  // Close any overlays when the screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      // This will run when the screen comes into focus
-      // Force close any remaining overlays or modals
-      console.log('My Tickets screen focused - ensuring overlays are closed');
-      
-      // You can add additional cleanup logic here if needed
-      // For example, if you have global modal states, you can reset them here
-      
+      // Refetch tickets if shouldRefresh param is present or on focus
+      if (params.shouldRefresh === 'true') {
+        fetchTickets();
+        // Optionally, clear the param (not strictly needed with Expo Router)
+      }
       return () => {
         // Cleanup when screen loses focus
-        console.log('My Tickets screen losing focus');
       };
-    }, [])
+    }, [params.shouldRefresh, user])
   );
 
   const renderTicketItem = ({ item }: { item: TicketWithEvent }) => {
+    // Find the corresponding mock event to get time and other details
+    const mockEvents = [
+      {
+        id: '550e8400-e29b-41d4-a716-446655440001',
+        time: '6:00 PM - 9:00 PM',
+      },
+      {
+        id: '550e8400-e29b-41d4-a716-446655440002',
+        time: '8:00 AM - 5:00 PM',
+      },
+      {
+        id: '550e8400-e29b-41d4-a716-446655440003',
+        time: '7:00 PM - 10:00 PM',
+      },
+      {
+        id: '550e8400-e29b-41d4-a716-446655440004',
+        time: '9:00 AM - 4:00 PM',
+      },
+      {
+        id: '550e8400-e29b-41d4-a716-446655440005',
+        time: '7:00 PM - 9:00 PM',
+      },
+      {
+        id: '550e8400-e29b-41d4-a716-446655440006',
+        time: '6:00 PM - 9:00 PM',
+      }
+    ];
+    
     const mockEvent = mockEvents.find(mock => mock.id === item.events?.id);
     const eventTime = mockEvent?.time || 'Time TBD';
 
     return (
-      <TouchableOpacity
-        style={styles.ticketCard}
-        onPress={() => router.push(`/my-ticket/${item.id}`)}
-      >
-        {item.events?.image && (
-          <Image source={{ uri: item.events.image }} style={styles.eventImage} />
+    <TouchableOpacity
+      style={styles.ticketCard}
+      onPress={() => router.push(`/my-ticket/${item.id}`)}
+    >
+      {item.events?.image && (
+        <Image source={{ uri: item.events.image }} style={styles.eventImage} />
+      )}
+      <View style={styles.ticketInfo}>
+        <Text style={styles.eventName}>{item.events?.title}</Text>
+        {item.events?.start_time && (
+          <Text style={styles.eventDate}>
+            {format(new Date(item.events.start_time), 'eeee, MMM d, yyyy')}
+          </Text>
         )}
-        <View style={styles.ticketInfo}>
-          <Text style={styles.eventName}>{item.events?.title}</Text>
-          {item.events?.start_time && (
-            <Text style={styles.eventDate}>
-              {format(new Date(item.events.start_time), 'eeee, MMM d, yyyy')}
-            </Text>
-          )}
           <View style={styles.eventTimeContainer}>
             <Clock size={14} color={Colors.textSecondary} />
             <Text style={styles.eventTime}>{eventTime}</Text>
@@ -116,13 +129,13 @@ const MyTicketsScreen = () => {
               <Text style={styles.eventLocation}>{item.events.location}</Text>
             </View>
           )}
-          <View style={styles.ticketTypeContainer}>
-            <TicketIcon size={16} color={Colors.primary} />
-            <Text style={styles.ticketType}>{item.ticket_type}</Text>
-          </View>
+        <View style={styles.ticketTypeContainer}>
+          <TicketIcon size={16} color={Colors.primary} />
+          <Text style={styles.ticketType}>{item.ticket_type}</Text>
         </View>
-      </TouchableOpacity>
-    );
+      </View>
+    </TouchableOpacity>
+  );
   };
 
   if (loading) {
@@ -136,7 +149,6 @@ const MyTicketsScreen = () => {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ title: 'My Tickets' }} />
-      <Text style={styles.title}>My Tickets</Text>
       <FlatList
         data={tickets}
         renderItem={renderTicketItem}
@@ -165,14 +177,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: Colors.background,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
   },
   listContainer: {
     padding: 16,

@@ -15,10 +15,10 @@ import {
   RefreshControl,
   ImageBackground,
   Animated,
+  ToastAndroid,
 } from 'react-native';
 import { Plus, Calendar, MapPin, Clock, Users, Share2, Heart, X, Filter, Search } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Snackbar } from 'react-native-paper';
 import Colors from '@/constants/Colors';
 import { format } from 'date-fns';
 import { useUserStore } from '@/store/userStore';
@@ -218,8 +218,6 @@ export default function EventsScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [hasCheckedProfileSetup, setHasCheckedProfileSetup] = useState(false);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   const menuAnimation = useRef(new Animated.Value(0)).current;
   const router = useRouter();
   const { user } = useAuth();
@@ -364,10 +362,22 @@ export default function EventsScreen() {
 
         await updateEventAfterTicketPurchase(event.id);
 
-        // Show success toast and navigate
-        setSnackbarVisible(true);
-        setSnackbarMessage('Ticket Claimed! Your free ticket has been added to your account.');
-        router.push('/my-tickets');
+        // Show success feedback with navigation options
+        Alert.alert(
+          'Purchase Successful',
+          'Your free ticket has been claimed! 🎉',
+          [
+            {
+              text: 'View My Tickets',
+              onPress: () => router.push('/my-tickets'),
+            }
+          ]
+        );
+
+        // Android toast (optional)
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('Free ticket claimed!', ToastAndroid.SHORT);
+        }
       } catch (error) {
         console.error('Error claiming free ticket:', error);
         Alert.alert(
@@ -402,10 +412,22 @@ export default function EventsScreen() {
 
         await updateEventAfterTicketPurchase(selectedEvent.id);
         
-        // Show success toast and navigate
-        setSnackbarVisible(true);
-        setSnackbarMessage('Payment Successful! Your new ticket is now in your account.');
-        router.push('/my-tickets');
+        // Show success feedback with navigation options
+        Alert.alert(
+          'Purchase Successful',
+          'Your ticket has been booked! 🎉',
+          [
+            {
+              text: 'View My Tickets',
+              onPress: () => router.push('/my-tickets'),
+            }
+          ]
+        );
+
+        // Android toast (optional)
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('Ticket Purchased!', ToastAndroid.SHORT);
+        }
       } catch (error) {
         console.error('Error after payment:', error);
         Alert.alert(
@@ -467,12 +489,9 @@ export default function EventsScreen() {
         console.log('Forcing sync of mock events to database...');
         await syncMockEventsToDatabase();
         await loadEventsFromDatabase();
-        setSnackbarVisible(true);
-        setSnackbarMessage('Mock events synced to database successfully!');
+        console.log('Mock events synced to database successfully!');
       } catch (error) {
         console.error('Error syncing events:', error);
-        setSnackbarVisible(true);
-        setSnackbarMessage('Error syncing events to database');
       }
     }
   };
@@ -524,13 +543,14 @@ export default function EventsScreen() {
     if (isOrganizer) {
       // Organizer menu items
       const organizerItems = [
-        { id: 'dashboard', text: 'Dashboard Overview', icon: 'analytics-outline', action: () => Alert.alert('Navigate', 'Dashboard Overview') },
-        { id: 'tickets', text: 'Tickets Sold', icon: 'ticket-outline', action: () => Alert.alert('Navigate', 'Tickets Sold') },
-        { id: 'payments', text: 'Payments & Payouts', icon: 'card-outline', action: () => Alert.alert('Navigate', 'Payments & Payouts') },
-        { id: 'tax', text: 'Tax Documents', icon: 'document-text-outline', action: () => Alert.alert('Navigate', 'Tax Documents') },
-        { id: 'bank', text: 'Bank Account Info', icon: 'business-outline', action: () => Alert.alert('Navigate', 'Bank Account Info') },
-        { id: 'receipts', text: 'Receipts & Invoices', icon: 'receipt-outline', action: () => Alert.alert('Navigate', 'Receipts & Invoices') },
-        { id: 'settings', text: 'Organizer Settings', icon: 'settings-outline', action: () => Alert.alert('Navigate', 'Organizer Settings') }
+        { id: 'dashboard', text: 'Dashboard Overview', icon: 'analytics-outline', action: () => { hideMenu(); router.push('/organizer/dashboard-overview'); } },
+        { id: 'tickets', text: 'Tickets Sold', icon: 'ticket-outline', action: () => { hideMenu(); router.push('/organizer/tickets-sold'); } },
+        { id: 'scan-tickets', text: 'Scan Tickets', icon: 'qr-code-outline', action: () => { hideMenu(); router.push('/scan'); } },
+        { id: 'payments', text: 'Payments & Payouts', icon: 'card-outline', action: () => { hideMenu(); router.push('/organizer/payments-payouts'); } },
+        { id: 'tax', text: 'Tax Documents', icon: 'document-text-outline', action: () => { hideMenu(); router.push('/organizer/tax-documents'); } },
+        { id: 'bank', text: 'Bank Account Info', icon: 'business-outline', action: () => { hideMenu(); router.push('/organizer/bank-account'); } },
+        { id: 'receipts', text: 'Receipts & Invoices', icon: 'receipt-outline', action: () => { hideMenu(); router.push('/organizer/receipts-invoices'); } },
+        { id: 'settings', text: 'Organizer Settings', icon: 'settings-outline', action: () => { hideMenu(); router.push('/organizer/settings'); } }
       ];
       
       console.log('Organizer items:', organizerItems.map(item => item.text));
@@ -540,7 +560,7 @@ export default function EventsScreen() {
     if (isAttendee) {
       // Attendee menu items
       menuItems.push(
-        { id: 'mytickets', text: 'My Tickets', icon: 'ticket-outline', action: handleNavigateToMyTickets }
+        { id: 'mytickets', text: 'My Tickets', icon: 'ticket-outline', action: () => { hideMenu(); handleNavigateToMyTickets(); } }
       );
     }
 
@@ -557,11 +577,12 @@ export default function EventsScreen() {
     if (menuItems.length === 0) {
       console.log('No roles found, showing fallback menu');
       menuItems.push(
-        { id: 'dashboard', text: 'Dashboard Overview', icon: 'analytics-outline', action: () => Alert.alert('Navigate', 'Dashboard Overview') },
-        { id: 'tickets', text: 'Tickets Sold', icon: 'ticket-outline', action: () => Alert.alert('Navigate', 'Tickets Sold') },
-        { id: 'payments', text: 'Payments & Payouts', icon: 'card-outline', action: () => Alert.alert('Navigate', 'Payments & Payouts') },
-        { id: 'mytickets', text: 'My Tickets', icon: 'ticket-outline', action: handleNavigateToMyTickets },
-        { id: 'settings', text: 'Settings', icon: 'settings-outline', action: () => Alert.alert('Navigate', 'Settings') }
+        { id: 'dashboard', text: 'Dashboard Overview', icon: 'analytics-outline', action: () => { hideMenu(); router.push('/organizer/dashboard-overview'); } },
+        { id: 'tickets', text: 'Tickets Sold', icon: 'ticket-outline', action: () => { hideMenu(); router.push('/organizer/tickets-sold'); } },
+        { id: 'scan-tickets', text: 'Scan Tickets', icon: 'qr-code-outline', action: () => { hideMenu(); router.push('/scan'); } },
+        { id: 'payments', text: 'Payments & Payouts', icon: 'card-outline', action: () => { hideMenu(); router.push('/organizer/payments-payouts'); } },
+        { id: 'mytickets', text: 'My Tickets', icon: 'ticket-outline', action: () => { hideMenu(); handleNavigateToMyTickets(); } },
+        { id: 'settings', text: 'Settings', icon: 'settings-outline', action: () => { hideMenu(); router.push('/organizer/settings'); } }
       );
     }
 
@@ -570,6 +591,34 @@ export default function EventsScreen() {
   };
 
   const EventDetailsModal = ({ event, visible, onClose }: { event: Event; visible: boolean; onClose: () => void }) => {
+    const [hasTicket, setHasTicket] = useState(false);
+    const { user } = useAuth();
+
+    // Check for existing ticket when modal opens
+    useEffect(() => {
+      const checkExistingTicket = async () => {
+        if (!user || !event) return;
+        
+        try {
+          const { data, error } = await supabase
+            .from('tickets')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('event_id', event.id)
+            .single();
+          
+          setHasTicket(!!data);
+        } catch (error) {
+          // If no ticket found, single() throws an error, so we set hasTicket to false
+          setHasTicket(false);
+        }
+      };
+
+      if (visible && user) {
+        checkExistingTicket();
+      }
+    }, [visible, user, event]);
+
     const handlePurchaseTicketInModal = () => {
       handlePurchaseTicket(event);
       onClose();
@@ -664,14 +713,14 @@ export default function EventsScreen() {
                 <TouchableOpacity
                   style={[
                     styles.ticketButton,
-                    event.ticketStatus === 'purchased' && styles.ticketButtonPurchased
+                    (event.ticketStatus === 'purchased' || hasTicket) && styles.ticketButtonPurchased
                   ]}
-                  onPress={event.ticketStatus === 'purchased' ? undefined : handlePurchaseTicketInModal}
-                  disabled={event.ticketStatus === 'purchased'}
+                  onPress={(event.ticketStatus === 'purchased' || hasTicket) ? undefined : handlePurchaseTicketInModal}
+                  disabled={event.ticketStatus === 'purchased' || hasTicket}
                 >
                   <Text style={styles.ticketButtonText}>
-                    {event.ticketStatus === 'purchased'
-                      ? 'Ticket Purchased'
+                    {(event.ticketStatus === 'purchased' || hasTicket)
+                      ? 'Already Claimed'
                       : event.price === null
                       ? 'Get Free Ticket'
                       : `Buy Ticket - $${event.price}`}
@@ -882,7 +931,7 @@ export default function EventsScreen() {
                           color={Colors.textSecondary} 
                           style={styles.menuItemIcon}
                         />
-                        <Text style={styles.menuItemText}>{item.text}</Text>
+                      <Text style={styles.menuItemText}>{item.text}</Text>
                       </View>
                     </TouchableOpacity>
                   )
@@ -905,16 +954,6 @@ export default function EventsScreen() {
           onClose={handleProfileSetupClose}
         />
       )}
-
-      {/* Add Snackbar for notifications */}
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
-        duration={3000}
-        style={{ backgroundColor: Colors.primary }}
-      >
-        {snackbarMessage}
-      </Snackbar>
     </View>
   );
 }

@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS public.tickets (
   event_id UUID REFERENCES public.events(id) ON DELETE CASCADE NOT NULL,
   ticket_type TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'confirmed',
-  wallet_url TEXT,
   calendar_ics_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
@@ -37,4 +36,9 @@ WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update their own tickets"
 ON public.tickets FOR UPDATE
 USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id); 
+WITH CHECK (auth.uid() = user_id);
+
+-- Allow users to delete their own tickets
+CREATE POLICY "Users can delete their own tickets"
+ON public.tickets FOR DELETE
+USING (auth.uid() = user_id); 

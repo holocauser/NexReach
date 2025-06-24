@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Platform } from 'react-native';
 import { TrendingUp, Users, Clock, Lightbulb, Calendar, Star, Settings } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useReferralStore } from '@/store/referralStore';
 import { useCardStore } from '@/store/cardStore';
@@ -21,6 +23,7 @@ export default function DashboardScreen() {
   const { referrals, getTopReferrers, getTopRecipients, getTotalReferralsValue, getTotalSentValue, getTotalReceivedValue, regenerateReferrals, forceRegenerateReferrals, cleanInvalidReferrals } = useReferralStore();
   const { cards, isLoaded, getCardById, updateLastContacted, clearStorageAndReload, cleanupDatabaseAndSync } = useCardStore();
   const { user } = useAuth();
+  const router = useRouter();
   
   const [topReferrers, setTopReferrers] = useState<TopListItem[]>([]);
   const [topRecipients, setTopRecipients] = useState<TopListItem[]>([]);
@@ -189,9 +192,11 @@ export default function DashboardScreen() {
             Your networking and referral activity
           </Text>
         </View>
-        <TouchableOpacity onPress={showDebugMenu} style={styles.settingsButton}>
-          <Settings size={24} color={Colors.white} />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={showDebugMenu} style={styles.settingsButton}>
+            <Settings size={24} color={Colors.white} />
+          </TouchableOpacity>
+        </View>
       </View>
       
       <View style={styles.statsContainer}>
@@ -453,6 +458,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: 'rgba(255, 255, 255, 0.9)',
     marginTop: 4,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   settingsButton: {
     padding: 8,

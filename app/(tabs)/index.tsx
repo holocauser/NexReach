@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, StatusBar, SafeAreaView, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, KeyboardAvoidingView, Platform, StatusBar, SafeAreaView, Alert, Button } from 'react-native';
 import { Search, X, Settings, Star, FileText, Mic, File, Trash2 } from 'lucide-react-native';
 import { useCardStore } from '@/store/cardStore';
 import { useRouter } from 'expo-router';
@@ -17,13 +17,86 @@ import GlobalFileStorageScreen from '@/components/GlobalFileStorageScreen';
 import { FileService } from '@/lib/fileService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReferralStore } from '@/store/referralStore';
+import { BusinessCard } from '@/types';
+
+// Helper function to get all unique tags from cards
+const getAllTags = (cards: BusinessCard[]) => {
+  const tagSet = new Set<string>();
+  cards.forEach(card => {
+    (card.tags || []).forEach(tag => tagSet.add(tag));
+  });
+  return Array.from(tagSet);
+};
+
+// TagFilterModal Component
+const TagFilterModal = ({ visible, tags, selectedTag, onApply, onClear, onClose }: {
+  visible: boolean;
+  tags: string[];
+  selectedTag: string;
+  onApply: (tag: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter tags by search term
+  const filteredTags = tags.filter(tag =>
+    tag.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.backdrop}>
+        <View style={styles.modalContainer}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Filter by Tag</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.close}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TextInput
+            placeholder="Type to search..."
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            style={styles.searchInput}
+          />
+
+          <FlatList
+            data={['Show All', ...filteredTags]}
+            keyExtractor={item => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.tagItem,
+                  item === selectedTag && styles.tagItemSelected
+                ]}
+                onPress={() => onApply(item)}
+              >
+                <Text style={item === selectedTag ? styles.tagTextSelected : styles.tagText}>
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            )}
+            ItemSeparatorComponent={() => <View style={styles.separator}/>}
+          />
+
+          <View style={styles.footer}>
+            <Button title="Clear Filter" onPress={() => { setSearchTerm(''); onClear(); }} />
+            <Button title="Done" onPress={() => onClose()} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 export default function MyCardsScreen() {
   const router = useRouter();
   const { cards, toggleFavorite, favorites, resetToMockCards, syncDatabaseWithLocalState, clearAllCardsFromDatabase, cleanupDuplicateScannedCards } = useCardStore();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string>('Show All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showGlobalFileStorage, setShowGlobalFileStorage] = useState(false);
@@ -32,7 +105,7 @@ export default function MyCardsScreen() {
   const [showTagModal, setShowTagModal] = useState(false);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const [showFilesModal, setShowFilesModal] = useState(false);
-  const [tagSearch, setTagSearch] = useState('');
+  const [showSearchInput, setShowSearchInput] = useState(false);
   const [selectedCity, setSelectedCity] = useState<string>('Orlando'); // Default city
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -77,17 +150,26 @@ export default function MyCardsScreen() {
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  // Filter cards based on selected tag
-  const filteredCards = selectedTag 
-    ? sortedCards.filter(card => card.tags && card.tags.includes(selectedTag))
-    : sortedCards;
+  // Compute displayed cards by applying both tag and text filters
+  const displayedCards = sortedCards.filter(card => {
+    // Apply tag filter
+    if (selectedTag !== 'Show All') {
+      if (!card.tags || !card.tags.includes(selectedTag)) {
+        return false;
+      }
+    }
 
-  // Get filtered tags based on search
-  const getFilteredTags = () => {
-    return tagOptions.filter(tag =>
-      tag.toLowerCase().includes(tagSearch.toLowerCase())
-    );
-  };
+    // Apply search filter
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (
+        card.name.toLowerCase().includes(q) ||
+        card.company.toLowerCase().includes(q)
+      );
+    }
+
+    return true;
+  });
 
   const handleCardPress = (id: string) => {
     router.push(`/contact-details/${id}`);
@@ -108,19 +190,13 @@ export default function MyCardsScreen() {
   const toggleTagFilter = (tag: string) => {
     console.log('toggleTagFilter called with tag:', tag);
     console.log('Current selectedTag:', selectedTag);
-    setSelectedTag(prev => {
-      const newTag = prev === tag ? null : tag;
-      console.log('New selectedTag will be:', newTag);
-      return newTag;
-    });
+    setSelectedTag(tag);
     setShowTagModal(false);
-    setTagSearch('');
   };
 
   const clearTagFilter = () => {
-    setSelectedTag(null);
+    setSelectedTag('Show All');
     setShowTagModal(false);
-    setTagSearch('');
   };
 
   // Get popular tags from existing cards
@@ -201,25 +277,24 @@ export default function MyCardsScreen() {
                 }
               }
 
-              // Update card store
+              // Remove from card's files/voiceNotes array
+              const updatedCard = { ...card };
               if (type === 'file') {
-                const updatedCard = {
-                  ...card,
-                  files: (card.files || []).filter(f => f.id !== item.id)
-                };
-                updateCard(updatedCard);
+                updatedCard.files = (card.files || []).filter(f => f.id !== item.id);
               } else {
-                const updatedCard = {
-                  ...card,
-                  voiceNotes: (card.voiceNotes || []).filter(v => v.id !== item.id)
-                };
-                updateCard(updatedCard);
+                updatedCard.voiceNotes = (card.voiceNotes || []).filter(v => v.id !== item.id);
               }
 
+              // Update the card in the store
+              await updateCard(updatedCard);
+              
+              // Refresh file count
+              fetchTotalFileCount();
+              
               Alert.alert('Success', 'File deleted successfully');
             } catch (error) {
               console.error('Error deleting file:', error);
-              Alert.alert('Error', 'Failed to delete file');
+              Alert.alert('Error', 'Failed to delete file. Please try again.');
             }
           }
         }
@@ -232,14 +307,14 @@ export default function MyCardsScreen() {
       await toggleFavorite(id);
     } catch (error) {
       console.error('Error toggling favorite:', error);
-      Alert.alert('Error', 'Failed to update favorite status. Please try again.');
+      Alert.alert('Error', 'Failed to update favorite status');
     }
   };
 
   const handleDeleteCard = async (id: string) => {
     Alert.alert(
       'Delete Card',
-      'Are you sure you want to delete this card? This action cannot be undone.',
+      'Are you sure you want to delete this business card? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -249,7 +324,7 @@ export default function MyCardsScreen() {
             try {
               const { deleteCard } = useCardStore.getState();
               await deleteCard(id);
-              console.log('Card deleted successfully');
+              Alert.alert('Success', 'Card deleted successfully');
             } catch (error) {
               console.error('Error deleting card:', error);
               Alert.alert('Error', 'Failed to delete card. Please try again.');
@@ -267,36 +342,30 @@ export default function MyCardsScreen() {
           style={styles.swipeDeleteButton}
           onPress={() => handleDeleteCard(item.id)}
         >
-          <Trash2 size={24} color="white" />
+          <Trash2 size={20} color="white" />
           <Text style={styles.swipeDeleteText}>Delete</Text>
         </TouchableOpacity>
       );
     };
 
     return (
-      <Swipeable
-        renderRightActions={renderRightActions}
-        rightThreshold={40}
-        overshootRight={false}
-      >
+      <Swipeable renderRightActions={renderRightActions}>
         <BusinessCardItem
           card={item}
-          onPress={handleCardPress}
-          onToggleFavorite={handleToggleFavorite}
-          onEdit={handleEdit}
-          onAddVoiceNote={handleAddVoiceNote}
+          onPress={() => handleCardPress(item.id)}
+          onEdit={() => handleEdit(item.id)}
+          onAddVoiceNote={() => handleAddVoiceNote(item.id)}
+          onToggleFavorite={() => handleToggleFavorite(item.id)}
           onFileIconPress={() => handleFileIconPress(item.id)}
-          onFileChange={fetchTotalFileCount}
-          registerRefresh={registerCardRefresh}
+          registerRefresh={(cardId, refreshFunction) => registerCardRefresh(cardId, refreshFunction)}
         />
       </Swipeable>
     );
   };
 
   const handleReset = async () => {
+    setIsResetting(true);
     try {
-      console.log('🔄 Starting reset process...');
-      
       // Clear all data and reset to mock cards
       await resetToMockCards(true, true);
       
@@ -321,11 +390,17 @@ export default function MyCardsScreen() {
             <View style={styles.headerLeft}>
               <Text style={styles.headerTitle}>My Cards</Text>
               <Text style={styles.headerSubtitle}>
-                {filteredCards.length} {filteredCards.length === 1 ? 'card' : 'cards'}
+                {displayedCards.length} {displayedCards.length === 1 ? 'card' : 'cards'}
               </Text>
             </View>
             
             <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={() => setShowSearchInput(!showSearchInput)}
+              >
+                <Search size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerButton}
                 onPress={() => setShowFavoritesModal(true)}
@@ -375,6 +450,18 @@ export default function MyCardsScreen() {
           </View>
         </View>
 
+        {/* Search Input */}
+        {showSearchInput && (
+          <View style={styles.searchContainer}>
+            <TextInput
+              placeholder="Search cards..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={styles.cardSearchInput}
+            />
+          </View>
+        )}
+
         {/* Action Buttons */}
         <View style={styles.actionContainerRow}>
           <TouchableOpacity
@@ -389,9 +476,9 @@ export default function MyCardsScreen() {
           >
             <Search size={16} color={Colors.primary} />
             <Text style={styles.tagFilterButtonText}>
-              {selectedTag ? `Tag: ${selectedTag}` : 'Filter by Tag'}
+              {selectedTag !== 'Show All' ? `Tag: ${selectedTag}` : 'Filter by Tag'}
             </Text>
-            {selectedTag && (
+            {selectedTag !== 'Show All' && (
               <TouchableOpacity
                 onPress={clearTagFilter}
                 style={styles.clearTagButton}
@@ -403,18 +490,21 @@ export default function MyCardsScreen() {
         </View>
 
         <FlatList
-          data={filteredCards}
+          data={displayedCards}
           keyExtractor={(item) => item.id}
           renderItem={renderSwipeableCard}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
-                {selectedTag ? `No cards found with tag "${selectedTag}"` : 'No business cards found'}
+                {selectedTag !== 'Show All' || searchQuery 
+                  ? `No cards found${selectedTag !== 'Show All' ? ` with tag "${selectedTag}"` : ''}${searchQuery ? ` matching "${searchQuery}"` : ''}`
+                  : 'No business cards found'
+                }
               </Text>
               <Text style={styles.emptySubtext}>
-                {selectedTag 
-                  ? 'Try selecting a different tag or clear the filter'
+                {(selectedTag !== 'Show All' || searchQuery)
+                  ? 'Try adjusting your search or filter criteria'
                   : 'Add new cards by scanning business cards or creating them manually.'
                 }
               </Text>
@@ -479,112 +569,15 @@ export default function MyCardsScreen() {
           </View>
         </Modal>
 
-        {/* Tag Search Modal */}
-        <Modal
+        {/* TagFilterModal */}
+        <TagFilterModal
           visible={showTagModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowTagModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              style={{ flex: 1 }}
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-            >
-              <SafeAreaView style={styles.modalContainer}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Filter by Tag</Text>
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setShowTagModal(false);
-                      setTagSearch('');
-                    }} 
-                    style={styles.modalCloseButton}
-                  >
-                    <X size={24} color={Colors.textPrimary} />
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.modalSearchContainer}>
-                  <Search size={20} color={Colors.textSecondary} />
-                  <TextInput
-                    style={styles.modalSearchInput}
-                    placeholder="Type to search tags..."
-                    placeholderTextColor={Colors.textLight}
-                    value={tagSearch}
-                    onChangeText={setTagSearch}
-                    autoFocus={true}
-                  />
-                  {tagSearch.length > 0 && (
-                    <TouchableOpacity onPress={() => setTagSearch('')}>
-                      <X size={20} color={Colors.textSecondary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                
-                <FlatList
-                  data={['Show All', ...getFilteredTags()]}
-                  keyExtractor={(item) => item}
-                  style={styles.modalTagsList}
-                  renderItem={({ item }) => {
-                    const isSelected = item === 'Show All' ? selectedTag === null : selectedTag === item;
-                    console.log(`Rendering tag: ${item}, isSelected: ${isSelected}, selectedTag: ${selectedTag}`);
-                    return (
-                      <TouchableOpacity
-                        style={[
-                          styles.modalTagItem,
-                          isSelected && styles.modalTagItemSelected
-                        ]}
-                        onPress={() => item === 'Show All' ? clearTagFilter() : toggleTagFilter(item)}
-                      >
-                        <Text style={[
-                          styles.modalTagText,
-                          isSelected && styles.modalTagTextSelected
-                        ]}>
-                          {item}
-                        </Text>
-                        {isSelected && (
-                          <View style={styles.checkmark}>
-                            <Text style={styles.checkmarkText}>✓</Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  }}
-                  ListEmptyComponent={
-                    <View style={styles.noResultsContainer}>
-                      <Text style={styles.noResultsText}>
-                        No tags found matching "{tagSearch}"
-                      </Text>
-                      <Text style={styles.noResultsSubtext}>
-                        Try a different search term or use "Show All" to see all available tags
-                      </Text>
-                    </View>
-                  }
-                />
-                
-                <View style={styles.modalFooter}>
-                  <TouchableOpacity 
-                    onPress={clearTagFilter}
-                    style={styles.clearAllButton}
-                  >
-                    <Text style={styles.clearAllButtonText}>Clear Filter</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={() => {
-                      setShowTagModal(false);
-                      setTagSearch('');
-                    }}
-                    style={styles.doneButton}
-                  >
-                    <Text style={styles.doneButtonText}>Done</Text>
-                  </TouchableOpacity>
-                </View>
-              </SafeAreaView>
-            </KeyboardAvoidingView>
-          </View>
-        </Modal>
+          tags={getAllTags(cards)}
+          selectedTag={selectedTag}
+          onApply={toggleTagFilter}
+          onClear={clearTagFilter}
+          onClose={() => setShowTagModal(false)}
+        />
 
         {/* Global Files Modal */}
         <GlobalFileStorageScreen
@@ -676,6 +669,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'Inter-SemiBold',
     color: Colors.cardBackground,
+  },
+  searchContainer: {
+    backgroundColor: Colors.cardBackground,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  cardSearchInput: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
   },
   actionContainerRow: {
     backgroundColor: Colors.cardBackground,
@@ -836,122 +847,72 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
   },
-  modalSearchContainer: {
-    flexDirection: 'row',
+  // TagFilterModal Styles
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
     alignItems: 'center',
-    margin: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  title: {
+    fontSize: 20,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textPrimary,
+  },
+  close: {
+    fontSize: 24,
+    color: Colors.textSecondary,
+    padding: 4,
+  },
+  searchInput: {
     backgroundColor: Colors.background,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
-  },
-  modalSearchInput: {
-    flex: 1,
-    marginLeft: 12,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    margin: 20,
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: Colors.textPrimary,
   },
-  modalTagsList: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  modalTagItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  tagItem: {
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
-    borderRadius: 8,
-    marginBottom: 4,
   },
-  modalTagItemSelected: {
+  tagItemSelected: {
     backgroundColor: `${Colors.primary}10`,
   },
-  modalTagText: {
+  tagText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: Colors.textPrimary,
-    flex: 1,
   },
-  modalTagTextSelected: {
+  tagTextSelected: {
     color: Colors.primary,
     fontFamily: 'Inter-Medium',
   },
-  checkmark: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+  separator: {
+    height: 1,
+    backgroundColor: Colors.border,
   },
-  checkmarkText: {
-    color: Colors.cardBackground,
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-    fontWeight: 'bold',
-  },
-  noResultsContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  noResultsText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  noResultsSubtext: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  modalFooter: {
+  footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-  },
-  clearAllButton: {
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  clearAllButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textSecondary,
-  },
-  doneButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  doneButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: Colors.cardBackground,
   },
   tabsRow: {
     flexDirection: 'row',

@@ -11,6 +11,12 @@ export interface Database {
           title: string | null;
           roles: string[] | null;
           is_setup: boolean;
+          org_name: string | null;
+          contact_email: string | null;
+          phone: string | null;
+          website: string | null;
+          stripe_account_id: string | null;
+          stripe_account_status: string | null;
           created_at: string;
         };
         Insert: {
@@ -21,6 +27,12 @@ export interface Database {
           title?: string | null;
           roles?: string[] | null;
           is_setup?: boolean;
+          org_name?: string | null;
+          contact_email?: string | null;
+          phone?: string | null;
+          website?: string | null;
+          stripe_account_id?: string | null;
+          stripe_account_status?: string | null;
           created_at?: string;
         };
         Update: {
@@ -31,6 +43,12 @@ export interface Database {
           title?: string | null;
           roles?: string[] | null;
           is_setup?: boolean;
+          org_name?: string | null;
+          contact_email?: string | null;
+          phone?: string | null;
+          website?: string | null;
+          stripe_account_id?: string | null;
+          stripe_account_status?: string | null;
           created_at?: string;
         };
       };
@@ -244,6 +262,7 @@ export interface Database {
           start_time: string;
           end_time: string | null;
           image: string | null;
+          attending_count: number;
           created_at: string;
           updated_at: string;
         };
@@ -256,6 +275,7 @@ export interface Database {
           start_time: string;
           end_time?: string | null;
           image?: string | null;
+          attending_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -268,6 +288,7 @@ export interface Database {
           start_time?: string;
           end_time?: string | null;
           image?: string | null;
+          attending_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -279,8 +300,15 @@ export interface Database {
           event_id: string;
           ticket_type: string;
           status: string;
-          wallet_url: string | null;
           calendar_ics_url: string | null;
+          validated_at: string | null;
+          validated_by: string | null;
+          attendee_name: string | null;
+          attendee_email: string | null;
+          amount: number | null;
+          currency: string | null;
+          stripe_payment_intent_id: string | null;
+          stripe_session_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -289,8 +317,15 @@ export interface Database {
           event_id: string;
           ticket_type: string;
           status?: string;
-          wallet_url?: string | null;
           calendar_ics_url?: string | null;
+          validated_at?: string | null;
+          validated_by?: string | null;
+          attendee_name?: string | null;
+          attendee_email?: string | null;
+          amount?: number | null;
+          currency?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_session_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -299,14 +334,42 @@ export interface Database {
           event_id?: string;
           ticket_type?: string;
           status?: string;
-          wallet_url?: string | null;
           calendar_ics_url?: string | null;
+          validated_at?: string | null;
+          validated_by?: string | null;
+          attendee_name?: string | null;
+          attendee_email?: string | null;
+          amount?: number | null;
+          currency?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_session_id?: string | null;
           created_at?: string;
         };
       };
     };
     Views: {
-      [_ in never]: never;
+      tickets_with_user_info: {
+        Row: {
+          id: string;
+          event_id: string;
+          user_id: string;
+          ticket_type: string;
+          status: string;
+          amount: number | null;
+          currency: string | null;
+          stripe_payment_intent_id: string | null;
+          stripe_session_id: string | null;
+          created_at: string;
+          event_title: string;
+          event_location: string | null;
+          event_start_time: string;
+          event_end_time: string | null;
+          event_image: string | null;
+          organizer_id: string;
+          attendee_name: string | null;
+          attendee_email: string | null;
+        };
+      };
     };
     Functions: {
       [_ in never]: never;

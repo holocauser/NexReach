@@ -97,7 +97,15 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
                 
                 // Get current user ID for referral generation
                 const { data: { user } } = await supabase.auth.getUser();
-                const userId = user?.id || 'default-user-id';
+                if (!user) {
+                  console.log('User not authenticated, skipping referral generation');
+                  set({
+                    referrals: [],
+                    isLoaded: true,
+                  });
+                  return;
+                }
+                const userId = user.id;
                 
                 // Add proper UUIDs and replace USER_ID with actual user ID
                 const generatedReferrals: Referral[] = generatedReferralsData.map((referralData, index) => {
@@ -518,7 +526,15 @@ export const useReferralStore = create<ReferralState>((set, get) => ({
         
         // Get current user ID for referral generation
         const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id || 'default-user-id';
+        if (!user) {
+          console.log('User not authenticated, skipping referral generation');
+          set({
+            referrals: [],
+            isLoaded: true,
+          });
+          return;
+        }
+        const userId = user.id;
         
         // Add proper UUIDs and replace USER_ID with actual user ID
         const generatedReferrals: Referral[] = generatedReferralsData.map((referralData, index) => {
