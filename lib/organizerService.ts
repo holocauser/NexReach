@@ -351,9 +351,29 @@ class OrganizerService {
   // Get all receipts for organizer's events
   async getReceipts(organizerId: string): Promise<Receipt[]> {
     try {
-      // Use the tickets_with_user_info view to get all ticket data with user information
+      // First get all events by this organizer
+      const { data: events, error: eventsError } = await supabase
+        .from('events')
+        .select('id, title')
+        .eq('user_id', organizerId);
+
+      if (eventsError) {
+        throw eventsError;
+      }
+
+      if (!events || events.length === 0) {
+        return [];
+      }
+
+      const eventIds = events.map(e => e.id);
+      const eventTitles = events.reduce((acc, event) => {
+        acc[event.id] = event.title;
+        return acc;
+      }, {} as Record<string, string>);
+
+      // Get tickets for these events
       const { data: tickets, error: ticketsError } = await supabase
-        .from('tickets_with_user_info')
+        .from('tickets')
         .select(`
           id,
           event_id,
@@ -365,10 +385,10 @@ class OrganizerService {
           stripe_payment_intent_id,
           stripe_session_id,
           created_at,
-          event_title,
-          attendee_email
+          profiles!inner(full_name),
+          users!inner(email)
         `)
-        .eq('organizer_id', organizerId)
+        .in('event_id', eventIds)
         .order('created_at', { ascending: false });
 
       if (ticketsError) {
@@ -379,8 +399,8 @@ class OrganizerService {
       const receipts: Receipt[] = (tickets || []).map((ticket: any) => ({
         id: ticket.id,
         eventId: ticket.event_id,
-        eventName: ticket.event_title || 'Unknown Event',
-        buyerEmail: ticket.attendee_email || 'No email',
+        eventName: eventTitles[ticket.event_id] || 'Unknown Event',
+        buyerEmail: ticket.users?.email || 'No email',
         ticketType: ticket.ticket_type || 'General',
         amount: ticket.amount || 0,
         currency: ticket.currency || 'usd',

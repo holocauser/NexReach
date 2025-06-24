@@ -301,8 +301,6 @@ export interface Database {
           ticket_type: string;
           status: string;
           calendar_ics_url: string | null;
-          validated_at: string | null;
-          validated_by: string | null;
           created_at: string;
         };
         Insert: {
@@ -312,8 +310,6 @@ export interface Database {
           ticket_type: string;
           status?: string;
           calendar_ics_url?: string | null;
-          validated_at?: string | null;
-          validated_by?: string | null;
           created_at?: string;
         };
         Update: {
@@ -323,35 +319,12 @@ export interface Database {
           ticket_type?: string;
           status?: string;
           calendar_ics_url?: string | null;
-          validated_at?: string | null;
-          validated_by?: string | null;
           created_at?: string;
         };
       };
     };
     Views: {
-      tickets_with_user_info: {
-        Row: {
-          id: string;
-          event_id: string;
-          user_id: string;
-          ticket_type: string;
-          status: string;
-          amount: number | null;
-          currency: string | null;
-          stripe_payment_intent_id: string | null;
-          stripe_session_id: string | null;
-          created_at: string;
-          event_title: string;
-          event_location: string | null;
-          event_start_time: string;
-          event_end_time: string | null;
-          event_image: string | null;
-          organizer_id: string;
-          attendee_name: string | null;
-          attendee_email: string | null;
-        };
-      };
+      [_ in never]: never;
     };
     Functions: {
       [_ in never]: never;

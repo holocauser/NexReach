@@ -22,7 +22,7 @@
       "buildNumber": "1",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to scan business cards, QR codes for ticket validation, and create digital contacts.",
+        "NSCameraUsageDescription": "This app uses the camera to scan business cards and create digital contacts.",
         "NSPhotoLibraryUsageDescription": "This app accesses your photos to let you save scanned business cards.",
         "NSLocationWhenInUseUsageDescription": "This app uses location to find nearby networking events and connect with local professionals.",
         "NSMicrophoneUsageDescription": "This app needs access to your microphone to record voice notes for contacts.",
@@ -67,13 +67,7 @@
       "expo-secure-store",
       "expo-apple-authentication",
       "expo-tracking-transparency",
-      "expo-calendar",
-      [
-        "expo-barcode-scanner",
-        {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access camera to scan QR codes and barcodes."
-        }
-      ]
+      "expo-calendar"
     ],
     "extra": {
       "router": {},

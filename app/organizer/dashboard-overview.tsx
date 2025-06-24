@@ -394,7 +394,7 @@ export default function DashboardOverviewScreen() {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => router.push('/organizer/scan-tickets')}
+              onPress={() => router.push('/scan')}
             >
               <Ionicons name="qr-code" size={24} color={Colors.primary} />
               <Text style={styles.actionText}>Scan Tickets</Text>

@@ -54,8 +54,8 @@ export default function BankAccountScreen() {
       
       if (!onboardingUrl) {
         Alert.alert('Error', 'Failed to create Stripe connection link');
-        return;
-      }
+      return;
+    }
 
       // Open the onboarding URL
       const supported = await Linking.canOpenURL(onboardingUrl);
@@ -164,7 +164,7 @@ export default function BankAccountScreen() {
         </View>
       </View>
 
-      <View style={styles.infoRow}>
+    <View style={styles.infoRow}>
         <Text style={styles.infoLabel}>Charges Enabled</Text>
         <View style={styles.statusContainer}>
           <Ionicons 
