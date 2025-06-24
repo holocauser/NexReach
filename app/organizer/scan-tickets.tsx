@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { TicketValidationService } from '@/lib/ticketValidationService';
-import QRCodeScannerExpoGo from '@/components/QRCodeScannerExpoGo';
 import Colors from '@/constants/Colors';
 import { format } from 'date-fns';
 
@@ -45,7 +44,6 @@ export default function ScanTicketsScreen() {
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [manualTicketId, setManualTicketId] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
 
   const handleManualValidation = async () => {
     if (!manualTicketId.trim()) {
@@ -53,39 +51,17 @@ export default function ScanTicketsScreen() {
       return;
     }
 
-    await validateTicket(manualTicketId.trim());
-  };
-
-  const handleQRScan = async (qrData: string) => {
-    setShowScanner(false);
-    
-    // Try to parse as JSON first (structured QR code)
-    try {
-      const parsedData = JSON.parse(qrData);
-      if (parsedData.ticketId) {
-        await validateTicket(parsedData.ticketId);
-        return;
-      }
-    } catch (error) {
-      // If not JSON, treat as raw ticket ID
-    }
-    
-    // Treat the scanned data as a ticket ID
-    await validateTicket(qrData);
-  };
-
-  const validateTicket = async (ticketId: string) => {
     setIsProcessing(true);
     try {
       const validationResult = await TicketValidationService.validateTicket(
-        ticketId,
+        manualTicketId.trim(),
         user?.id || ''
       );
       
       const result: ScanResult = {
         success: validationResult.success,
         message: validationResult.message,
-        ticketId: ticketId,
+        ticketId: manualTicketId.trim(),
         attendeeInfo: validationResult.attendeeInfo,
         timestamp: new Date()
       };
@@ -129,29 +105,14 @@ export default function ScanTicketsScreen() {
       <View style={styles.content}>
         <View style={styles.infoCard}>
           <Ionicons name="qr-code-outline" size={48} color={Colors.primary} />
-          <Text style={styles.infoTitle}>Ticket Validation</Text>
+          <Text style={styles.infoTitle}>Manual Ticket Validation</Text>
           <Text style={styles.infoSubtitle}>
-            Scan QR codes or enter ticket IDs manually to validate attendee entry
+            Enter ticket IDs manually to validate attendee entry
           </Text>
         </View>
 
-        {/* Scan QR Code Button */}
-        <TouchableOpacity
-          style={styles.scanButton}
-          onPress={() => setShowScanner(true)}
-        >
-          <Ionicons name="qr-code" size={24} color={Colors.white} />
-          <Text style={styles.scanButtonText}>Scan QR Code</Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>OR</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>Manual Ticket ID</Text>
+          <Text style={styles.label}>Ticket ID</Text>
           <TextInput
             style={styles.input}
             value={manualTicketId}
@@ -193,13 +154,6 @@ export default function ScanTicketsScreen() {
           </View>
         </View>
       </View>
-
-      {/* QR Code Scanner (Expo Go Compatible) */}
-      <QRCodeScannerExpoGo
-        isVisible={showScanner}
-        onScan={handleQRScan}
-        onClose={() => setShowScanner(false)}
-      />
 
       {/* Scan Result Modal */}
       <Modal
@@ -357,7 +311,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   infoTitle: {
     fontSize: 20,
@@ -371,37 +325,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  scanButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  scanButtonText: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    color: Colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '500',
   },
   inputContainer: {
     marginBottom: 24,
