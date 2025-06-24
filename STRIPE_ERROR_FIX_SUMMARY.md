@@ -90,7 +90,7 @@ ERROR  Error creating Stripe product: [Error: Failed to create Stripe product: ]
 Make sure these are set in your environment:
 ```
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
-EXPO_PUBLIC_STRIPE_SECRET_KEY=sk_test_...
+EXPO_PUBLIC_STRIPE_SECRET_KEY=sk_test_your_secret_key_here
 ```
 
 ## Next Steps

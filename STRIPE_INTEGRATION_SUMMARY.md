@@ -114,7 +114,7 @@ Successfully implemented Stripe payment processing for paid events in the ScanCa
 ### Environment Variables Required
 ```env
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
-EXPO_PUBLIC_STRIPE_SECRET_KEY=sk_test_...
+EXPO_PUBLIC_STRIPE_SECRET_KEY=sk_test_your_secret_key_here
 ```
 
 ### Database Migration
