@@ -1,71 +1,8 @@
--- Migration: Add validated_at field to tickets table for QR code validation
--- This enables organizers to scan and validate tickets at events
+-- Fixed Migration v2 to add ticket validation fields
+-- This properly handles the view column type conflict
 
--- Add validated_at column to tickets table
-ALTER TABLE public.tickets 
-ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ,
-ADD COLUMN IF NOT EXISTS validated_by UUID REFERENCES auth.users(id);
-
--- Create index for faster validation queries
-CREATE INDEX IF NOT EXISTS idx_tickets_validated_at ON public.tickets(validated_at);
-CREATE INDEX IF NOT EXISTS idx_tickets_validated_by ON public.tickets(validated_by);
-
--- Add comment for documentation
-COMMENT ON COLUMN public.tickets.validated_at IS 'Timestamp when ticket was validated/checked-in at event';
-COMMENT ON COLUMN public.tickets.validated_by IS 'User ID of organizer who validated the ticket';
-
--- Update existing tickets to have null validated_at
-UPDATE public.tickets 
-SET validated_at = NULL, validated_by = NULL 
-WHERE validated_at IS NULL;
-
--- Add RLS policy for organizers to validate tickets for their events
--- This allows event organizers to validate tickets for events they created
-DROP POLICY IF EXISTS "Organizers can validate tickets for their events" ON public.tickets;
-
-CREATE POLICY "Organizers can validate tickets for their events"
-ON public.tickets FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.events 
-    WHERE events.id = tickets.event_id 
-    AND events.user_id = auth.uid()
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.events 
-    WHERE events.id = tickets.event_id 
-    AND events.user_id = auth.uid()
-  )
-);
-
--- Add RLS policy for organizers to view tickets for their events
-DROP POLICY IF EXISTS "Organizers can view tickets for their events" ON public.tickets;
-
-CREATE POLICY "Organizers can view tickets for their events"
-ON public.tickets FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.events 
-    WHERE events.id = tickets.event_id 
-    AND events.user_id = auth.uid()
-  )
-);
-
--- Verify the migration was successful
-SELECT 
-    column_name, 
-    data_type, 
-    is_nullable, 
-    column_default
-FROM information_schema.columns 
-WHERE table_name = 'tickets' 
-  AND column_name IN ('validated_at', 'validated_by')
-ORDER BY column_name;
-
--- Migration to add ticket validation fields
--- This adds the missing fields needed for the ticket validation feature
+-- First, drop the existing view if it exists to avoid conflicts
+DROP VIEW IF EXISTS public.tickets_with_user_info;
 
 -- Add missing columns to tickets table if they don't exist
 DO $$ 
@@ -132,7 +69,9 @@ CREATE INDEX IF NOT EXISTS idx_tickets_event_id ON public.tickets(event_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_user_id ON public.tickets(user_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON public.tickets(status);
 
--- Create a view for tickets with user and event information
+-- Recreate the view with proper column types
+-- Use COALESCE to handle the case where attendee_email might be null
+-- and cast to text to ensure consistent type
 CREATE OR REPLACE VIEW public.tickets_with_user_info AS
 SELECT 
     t.id,
@@ -151,13 +90,24 @@ SELECT
     e.end_time as event_end_time,
     e.image as event_image,
     e.user_id as organizer_id,
-    t.attendee_name,
-    t.attendee_email
+    COALESCE(t.attendee_name, p.full_name) as attendee_name,
+    COALESCE(t.attendee_email, u.email::text) as attendee_email
 FROM public.tickets t
-LEFT JOIN public.events e ON t.event_id = e.id;
+LEFT JOIN public.events e ON t.event_id = e.id
+LEFT JOIN public.profiles p ON t.user_id = p.id
+LEFT JOIN auth.users u ON t.user_id = u.id;
 
 -- Add RLS policies for tickets table
 ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view own tickets" ON public.tickets;
+DROP POLICY IF EXISTS "Users can insert own tickets" ON public.tickets;
+DROP POLICY IF EXISTS "Users can update own tickets" ON public.tickets;
+DROP POLICY IF EXISTS "Organizers can view event tickets" ON public.tickets;
+DROP POLICY IF EXISTS "Organizers can update event tickets" ON public.tickets;
+DROP POLICY IF EXISTS "Organizers can validate tickets for their events" ON public.tickets;
+DROP POLICY IF EXISTS "Organizers can view tickets for their events" ON public.tickets;
 
 -- Policy: Users can view their own tickets
 CREATE POLICY "Users can view own tickets" ON public.tickets
@@ -225,4 +175,21 @@ COMMENT ON COLUMN public.tickets.attendee_email IS 'Email of the attendee (can b
 COMMENT ON COLUMN public.tickets.amount IS 'Ticket price amount';
 COMMENT ON COLUMN public.tickets.currency IS 'Currency code for the ticket price';
 COMMENT ON COLUMN public.tickets.stripe_payment_intent_id IS 'Stripe payment intent ID for tracking payments';
-COMMENT ON COLUMN public.tickets.stripe_session_id IS 'Stripe session ID for checkout sessions'; 
+COMMENT ON COLUMN public.tickets.stripe_session_id IS 'Stripe session ID for checkout sessions';
+
+-- Verify the migration was successful
+SELECT 
+    column_name, 
+    data_type, 
+    is_nullable, 
+    column_default
+FROM information_schema.columns 
+WHERE table_name = 'tickets' 
+  AND column_name IN ('validated_at', 'validated_by', 'attendee_name', 'attendee_email', 'amount', 'currency')
+ORDER BY column_name;
+
+-- Test the view to ensure it works
+SELECT 
+    'Migration completed successfully' as status,
+    COUNT(*) as total_tickets_in_view
+FROM public.tickets_with_user_info; 

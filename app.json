@@ -68,7 +68,12 @@
       "expo-apple-authentication",
       "expo-tracking-transparency",
       "expo-calendar",
-      "expo-barcode-scanner"
+      [
+        "expo-barcode-scanner",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access camera to scan QR codes and barcodes."
+        }
+      ]
     ],
     "extra": {
       "router": {},

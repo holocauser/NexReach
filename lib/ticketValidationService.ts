@@ -23,15 +23,6 @@ export interface QRCodeData {
   timestamp: string;
 }
 
-export interface EventTicketStats {
-  totalTickets: number;
-  checkedInTickets: number;
-  pendingTickets: number;
-  cancelledTickets: number;
-  totalRevenue: number;
-  checkInRate: number;
-}
-
 export class TicketValidationService {
   /**
    * Decode QR code data from scanned content
@@ -95,27 +86,7 @@ export class TicketValidationService {
   }
 
   /**
-   * Get event ticket statistics for organizers
-   */
-  static async getEventTicketStats(eventId: string): Promise<EventTicketStats | null> {
-    try {
-      const { data, error } = await supabase
-        .rpc('get_event_ticket_stats', { event_id: eventId });
-
-      if (error) {
-        console.error('Error fetching event stats:', error);
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error fetching event stats:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Validate ticket for check-in using database function
+   * Validate ticket for check-in
    */
   static async validateTicket(
     ticketId: string, 
@@ -123,54 +94,76 @@ export class TicketValidationService {
     currentEventId?: string
   ): Promise<TicketValidationResult> {
     try {
-      // Use the database function for validation
-      const { data, error } = await supabase
-        .rpc('validate_ticket', {
-          ticket_id: ticketId,
-          organizer_id: organizerId
-        });
-
-      if (error) {
-        console.error('Error validating ticket:', error);
+      // Fetch ticket with event details
+      const ticket = await this.getTicketById(ticketId);
+      
+      if (!ticket) {
         return {
           success: false,
-          message: '❌ Error validating ticket'
+          message: '❌ Ticket not found'
+        };
+      }
+
+      // Check if ticket is already validated
+      if (ticket.validated_at) {
+        return {
+          success: false,
+          message: '❌ Ticket already checked in',
+          ticket,
+          attendeeInfo: this.extractAttendeeInfo(ticket)
+        };
+      }
+
+      // Check if organizer owns the event
+      if (ticket.events?.user_id !== organizerId) {
+        return {
+          success: false,
+          message: '❌ You can only validate tickets for your own events'
         };
       }
 
       // If currentEventId is provided, check if ticket matches current event
-      if (currentEventId && data.event_id !== currentEventId) {
+      if (currentEventId && ticket.event_id !== currentEventId) {
         return {
           success: false,
           message: '❌ Ticket is for a different event'
         };
       }
 
-      if (data.success) {
-        return {
-          success: true,
-          message: data.message,
-          attendeeInfo: {
-            name: data.attendee_name || 'Unknown',
-            email: data.attendee_email || 'Unknown',
-            ticketType: data.ticket_type || 'General Admission',
-            eventTitle: data.event_title || 'Unknown Event',
-            purchaseDate: new Date().toISOString()
-          }
-        };
-      } else {
+      // Check if ticket status is confirmed
+      if (ticket.status !== 'confirmed') {
         return {
           success: false,
-          message: data.message,
-          attendeeInfo: data.attendee_name ? {
-            name: data.attendee_name,
-            email: data.attendee_email || 'Unknown',
-            ticketType: data.ticket_type || 'General Admission',
-            eventTitle: data.event_title || 'Unknown Event',
-            purchaseDate: new Date().toISOString()
-          } : undefined
+          message: `❌ Ticket status is ${ticket.status}`,
+          ticket,
+          attendeeInfo: this.extractAttendeeInfo(ticket)
         };
       }
+
+      // Validate the ticket
+      const { error } = await supabase
+        .from('tickets')
+        .update({
+          validated_at: new Date().toISOString(),
+          validated_by: organizerId
+        })
+        .eq('id', ticketId);
+
+      if (error) {
+        console.error('Error validating ticket:', error);
+        return {
+          success: false,
+          message: '❌ Failed to validate ticket'
+        };
+      }
+
+      return {
+        success: true,
+        message: '✅ Ticket validated successfully!',
+        ticket: { ...ticket, validated_at: new Date().toISOString(), validated_by: organizerId },
+        attendeeInfo: this.extractAttendeeInfo(ticket)
+      };
+
     } catch (error) {
       console.error('Error validating ticket:', error);
       return {
@@ -181,7 +174,7 @@ export class TicketValidationService {
   }
 
   /**
-   * Manually check in attendee by email
+   * Manually mark attendee as checked in (for cases where QR code doesn't work)
    */
   static async manuallyCheckIn(
     eventId: string,
@@ -189,54 +182,8 @@ export class TicketValidationService {
     organizerId: string
   ): Promise<TicketValidationResult> {
     try {
-      const { data, error } = await supabase
-        .rpc('manual_check_in', {
-          event_id: eventId,
-          attendee_email: attendeeEmail,
-          organizer_id: organizerId
-        });
-
-      if (error) {
-        console.error('Error with manual check-in:', error);
-        return {
-          success: false,
-          message: '❌ Error with manual check-in'
-        };
-      }
-
-      if (data.success) {
-        return {
-          success: true,
-          message: data.message,
-          attendeeInfo: {
-            name: data.attendee_name || 'Unknown',
-            email: data.attendee_email || 'Unknown',
-            ticketType: data.ticket_type || 'General Admission',
-            eventTitle: data.event_title || 'Unknown Event',
-            purchaseDate: new Date().toISOString()
-          }
-        };
-      } else {
-        return {
-          success: false,
-          message: data.message
-        };
-      }
-    } catch (error) {
-      console.error('Error with manual check-in:', error);
-      return {
-        success: false,
-        message: '❌ Error with manual check-in'
-      };
-    }
-  }
-
-  /**
-   * Get recent validations for an event
-   */
-  static async getRecentValidations(eventId: string, limit: number = 10): Promise<TicketValidationResult[]> {
-    try {
-      const { data, error } = await supabase
+      // Find ticket by event and attendee email
+      const { data: tickets, error } = await supabase
         .from('tickets')
         .select(`
           *,
@@ -252,51 +199,70 @@ export class TicketValidationService {
           )
         `)
         .eq('event_id', eventId)
-        .not('validated_at', 'is', null)
-        .order('validated_at', { ascending: false })
-        .limit(limit);
+        .eq('status', 'confirmed')
+        .is('validated_at', null);
 
       if (error) {
-        console.error('Error fetching recent validations:', error);
-        return [];
+        console.error('Error fetching tickets:', error);
+        return {
+          success: false,
+          message: '❌ Error finding tickets'
+        };
       }
 
-      return data.map(ticket => ({
-        success: true,
-        message: '✅ Checked in',
-        ticket,
-        attendeeInfo: {
-          name: ticket.attendee_name || 'Unknown',
-          email: ticket.attendee_email || 'Unknown',
-          ticketType: ticket.ticket_type || 'General Admission',
-          eventTitle: ticket.events?.title || 'Unknown Event',
-          purchaseDate: ticket.validated_at || new Date().toISOString()
-        }
-      }));
+      // Find ticket by attendee email (would need to join with profiles)
+      // For now, we'll need to implement this differently since we don't have direct email access
+      // This is a placeholder - in a real implementation, you'd need to join with profiles table
+      
+      return {
+        success: false,
+        message: '❌ Manual check-in not implemented yet'
+      };
+
     } catch (error) {
-      console.error('Error fetching recent validations:', error);
-      return [];
+      console.error('Error with manual check-in:', error);
+      return {
+        success: false,
+        message: '❌ Error with manual check-in'
+      };
     }
   }
 
   /**
-   * Generate QR code data for a ticket
+   * Get validation statistics for an event
    */
-  static generateQRCodeData(ticket: Ticket, event: Event): string {
-    return JSON.stringify({
-      ticketId: ticket.id,
-      eventId: event.id,
-      eventTitle: event.title,
-      ticketType: ticket.ticket_type || 'General Admission',
-      userId: ticket.user_id,
-      timestamp: new Date().toISOString()
-    });
+  static async getEventValidationStats(eventId: string): Promise<{
+    totalTickets: number;
+    validatedTickets: number;
+    pendingTickets: number;
+  }> {
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('id, validated_at')
+        .eq('event_id', eventId)
+        .eq('status', 'confirmed');
+
+      if (error) {
+        console.error('Error fetching validation stats:', error);
+        return { totalTickets: 0, validatedTickets: 0, pendingTickets: 0 };
+      }
+
+      const totalTickets = data.length;
+      const validatedTickets = data.filter(ticket => ticket.validated_at).length;
+      const pendingTickets = totalTickets - validatedTickets;
+
+      return { totalTickets, validatedTickets, pendingTickets };
+    } catch (error) {
+      console.error('Error getting validation stats:', error);
+      return { totalTickets: 0, validatedTickets: 0, pendingTickets: 0 };
+    }
   }
 
   /**
    * Extract attendee information from ticket
    */
-  static extractAttendeeInfo(ticket: Ticket & { events: Event | null }): {
+  private static extractAttendeeInfo(ticket: Ticket & { events: Event | null }): {
     name: string;
     email: string;
     ticketType: string;
@@ -304,11 +270,11 @@ export class TicketValidationService {
     purchaseDate: string;
   } {
     return {
-      name: ticket.attendee_name || 'Unknown',
-      email: ticket.attendee_email || 'Unknown',
-      ticketType: ticket.ticket_type || 'General Admission',
+      name: 'Attendee', // Would need to join with profiles table for actual name
+      email: 'attendee@example.com', // Would need to join with profiles table for actual email
+      ticketType: ticket.ticket_type,
       eventTitle: ticket.events?.title || 'Unknown Event',
-      purchaseDate: ticket.created_at || new Date().toISOString()
+      purchaseDate: new Date(ticket.created_at).toLocaleDateString()
     };
   }
 } 

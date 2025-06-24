@@ -46,31 +46,30 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Hide splash screen when everything is ready
+    // Hide splash screen when everything is ready or after a timeout
+    const hideSplash = async () => {
+      try {
+        await SplashScreen.hideAsync();
+      } catch (error) {
+        console.error('Error hiding splash screen:', error);
+      }
+    };
+
+    // Hide splash screen after 3 seconds regardless of loading state
+    const timeoutId = setTimeout(hideSplash, 3000);
+
+    // Also hide when everything is ready
     if (cardsLoaded && referralsLoaded && profileLoaded && !permissionsLoading && !authLoading) {
-      SplashScreen.hideAsync();
+      clearTimeout(timeoutId);
+      hideSplash();
     }
+
+    return () => clearTimeout(timeoutId);
   }, [cardsLoaded, referralsLoaded, profileLoaded, permissionsLoading, authLoading]);
 
-  // Show loading screen while data is loading
-  if (!cardsLoaded || !referralsLoaded || !profileLoaded) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.text}>Loading your data...</Text>
-      </View>
-    );
-  }
-
-  // Show loading screen while permissions are being set up
-  if (permissionsLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.text}>Setting up permissions...</Text>
-        <Text style={styles.subtext}>This helps us provide the best experience</Text>
-      </View>
-    );
+  // Show auth screen if user is not authenticated
+  if (!user && !authLoading) {
+    return <AuthScreen />;
   }
 
   // Show loading screen while checking authentication
@@ -81,11 +80,6 @@ function AppContent() {
         <Text style={styles.text}>Checking authentication...</Text>
       </View>
     );
-  }
-
-  // Show auth screen if user is not authenticated
-  if (!user) {
-    return <AuthScreen />;
   }
 
   // User is authenticated - show main app interface
@@ -104,6 +98,23 @@ function AppContent() {
         <Stack.Screen name="help-support" options={{ title: 'Help & Support' }} />
         <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not Found' }} />
+        <Stack.Screen name="organizer/scan-tickets" options={{ title: 'Scan Tickets' }} />
+        <Stack.Screen name="organizer/dashboard-overview" options={{ title: 'Dashboard' }} />
+        <Stack.Screen name="organizer/tickets-sold" options={{ title: 'Tickets Sold' }} />
+        <Stack.Screen name="organizer/payments-payouts" options={{ title: 'Payments' }} />
+        <Stack.Screen name="organizer/receipts-invoices" options={{ title: 'Receipts' }} />
+        <Stack.Screen name="organizer/tax-documents" options={{ title: 'Tax Documents' }} />
+        <Stack.Screen name="organizer/bank-account" options={{ title: 'Bank Account' }} />
+        <Stack.Screen name="organizer/settings" options={{ title: 'Organizer Settings' }} />
+        <Stack.Screen name="scan" options={{ title: 'Scan Card' }} />
+        <Stack.Screen name="edit-card/[id]" options={{ title: 'Edit Card' }} />
+        <Stack.Screen name="contact-details/[id]" options={{ title: 'Contact Details' }} />
+        <Stack.Screen name="add-referral/[id]" options={{ title: 'Add Referral' }} />
+        <Stack.Screen name="edit-referral/[id]" options={{ title: 'Edit Referral' }} />
+        <Stack.Screen name="my-tickets" options={{ title: 'My Tickets' }} />
+        <Stack.Screen name="my-ticket/[id]" options={{ title: 'Ticket Details' }} />
+        <Stack.Screen name="organizer-settings" options={{ title: 'Organizer Settings' }} />
+        <Stack.Screen name="about" options={{ title: 'About' }} />
       </Stack>
       <StatusBar style="dark" />
     </>

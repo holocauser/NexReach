@@ -303,12 +303,6 @@ export interface Database {
           calendar_ics_url: string | null;
           validated_at: string | null;
           validated_by: string | null;
-          attendee_name: string | null;
-          attendee_email: string | null;
-          amount: number | null;
-          currency: string | null;
-          stripe_payment_intent_id: string | null;
-          stripe_session_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -320,12 +314,6 @@ export interface Database {
           calendar_ics_url?: string | null;
           validated_at?: string | null;
           validated_by?: string | null;
-          attendee_name?: string | null;
-          attendee_email?: string | null;
-          amount?: number | null;
-          currency?: string | null;
-          stripe_payment_intent_id?: string | null;
-          stripe_session_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -337,12 +325,6 @@ export interface Database {
           calendar_ics_url?: string | null;
           validated_at?: string | null;
           validated_by?: string | null;
-          attendee_name?: string | null;
-          attendee_email?: string | null;
-          amount?: number | null;
-          currency?: string | null;
-          stripe_payment_intent_id?: string | null;
-          stripe_session_id?: string | null;
           created_at?: string;
         };
       };
